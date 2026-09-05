@@ -416,7 +416,9 @@ WITH frota AS (
   SELECT cv.cd_veiculo,
          sum(k.vl_lancamento) AS vl_caixa_total,
          sum(k.vl_lancamento) FILTER (WHERE upper(coalesce(h.ds_historico,'')) LIKE '%%COMBUST%%') AS vl_combustivel,
-         sum(k.vl_lancamento) FILTER (WHERE upper(coalesce(h.ds_historico,'')) ~ 'MANUT|PECA|PE.A|PNEU|ESTOFARIA') AS vl_manutencao,
+         -- 'PE.A' pegava PESADOS em "COMBUSTIVEL VEIC. PESADOS" e contava
+         -- combustivel como manutencao. O ponto virou classe fechada.
+         sum(k.vl_lancamento) FILTER (WHERE upper(coalesce(h.ds_historico,'')) ~ 'MANUT|PE[CC]A|PE[CÇ]A|PNEU|BORRACH|ESTOFARIA|RETIFIC') AS vl_manutencao,
          sum(k.vl_lancamento) FILTER (WHERE upper(coalesce(h.ds_historico,'')) LIKE '%%PEDAGIO%%') AS vl_pedagio,
          sum(k.vl_lancamento) FILTER (WHERE upper(coalesce(h.ds_historico,'')) ~ 'SALARIO|RECISAO|RESCISAO') AS vl_pessoal,
          count(*) AS qt_lancamentos
@@ -589,7 +591,11 @@ WITH placas AS (
     JOIN caixa k ON k.cd_caixa = cp.cd_caixa
    WHERE k.dt_documento BETWEEN CURRENT_DATE - %(dias)s AND CURRENT_DATE
 ), por_veiculo AS (
-  SELECT sum(k.vl_lancamento) AS vl, count(*) AS qt
+  -- placas COM lancamento no periodo, nao placas cadastradas: dizer "257
+  -- placas" quando so 105 tiveram despesa infla a base e esconde o veiculo
+  -- parado.
+  SELECT sum(k.vl_lancamento) AS vl, count(*) AS qt,
+         count(DISTINCT cv.cd_veiculo) AS qt_placas
     FROM caixa_veiculo cv
     JOIN caixa k ON k.cd_caixa = cv.cd_caixa
     JOIN veiculo_proprio vp ON vp.cd_veiculo = cv.cd_veiculo AND vp.dt_baixa IS NULL
@@ -613,7 +619,7 @@ UNION ALL
 SELECT 'custo', 'caixa_veiculo', NULL,
        round(COALESCE((SELECT vl FROM por_veiculo), 0)::numeric, 2),
        COALESCE((SELECT qt FROM por_veiculo), 0),
-       (SELECT count(*) FROM placas)
+       COALESCE((SELECT qt_placas FROM por_veiculo), 0)
 UNION ALL
 SELECT 'carta_frete_propria', 'ctrc', c.nm_recebedor,
        round(c.vl::numeric, 2), c.qt, NULL

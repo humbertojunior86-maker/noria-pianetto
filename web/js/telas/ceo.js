@@ -513,9 +513,138 @@ function setores(d) {
       el('ul.ceo-ressalvas', null, ressalvas.map((t) => el('li', { texto: t }))),
       el('h4.ceo-sub', { texto: 'Por agência' }),
       tabela,
+      el('h4.ceo-sub', { texto: 'Por veículo — frota própria' }),
+      veiculos(d, dias),
       carimbo(s, 'Setores'),
     ],
   });
+}
+
+/* ------------------------------------------------- resultado por veículo -- */
+
+/* A frota própria não é um bloco só. Trinta cavalos puxam CT-e e têm receita
+   com nome; o resto do cadastro — carretas, dollys, carros, moto — só gera
+   despesa, e despesa sem receita própria não é prejuízo, é custo de apoio.
+   Misturar os dois num número só esconde as duas coisas ao mesmo tempo. */
+
+/* O que sobra depois de combustível e manutenção: pedágio, pessoal, lavagem,
+   estacionamento, carga e descarga. Vem por subtração para nunca somar mais
+   que o total lançado na placa. */
+function outros(l) {
+  const t = N(l.vl_custo_identificavel) || 0;
+  const c = (N(l.vl_combustivel) || 0) + (N(l.vl_manutencao) || 0);
+  return Math.max(0, t - c);
+}
+
+function veiculos(d, dias) {
+  const q = bloco(d.erp, 'veiculo');
+  if (!q.linhas.length) {
+    return el('div.aviso-erro', {
+      texto: `Sem quebra por veículo: ${q.erro || 'o ERP não devolveu placas'}.`,
+    });
+  }
+
+  const puxa = [];
+  const apoio = [];
+  q.linhas.forEach((l) => ((N(l.qt_ctes) || 0) > 0 ? puxa : apoio).push(l));
+  puxa.sort((x, y) => (N(y.vl_contribuicao) || 0) - (N(x.vl_contribuicao) || 0));
+  apoio.sort((x, y) => (N(y.vl_custo_identificavel) || 0) - (N(x.vl_custo_identificavel) || 0));
+
+  const recPuxa = puxa.reduce((t, l) => t + (N(l.vl_receita) || 0), 0);
+  const cusPuxa = puxa.reduce((t, l) => t + (N(l.vl_custo_identificavel) || 0), 0);
+  const cusApoio = apoio.reduce((t, l) => t + (N(l.vl_custo_identificavel) || 0), 0);
+  const negativos = puxa.filter((l) => (N(l.vl_contribuicao) || 0) < 0);
+  const cusTotal = cusPuxa + cusApoio;
+  const combTotal = q.linhas.reduce((t, l) => t + (N(l.vl_combustivel) || 0), 0);
+  const manutTotal = q.linhas.reduce((t, l) => t + (N(l.vl_manutencao) || 0), 0);
+  const perdaNeg = negativos.reduce((t, l) => t + (N(l.vl_contribuicao) || 0), 0);
+
+  const linha = (l) => {
+    const con = N(l.vl_contribuicao);
+    const pr = N(l.pr_contribuicao);
+    const tom = con < 0 ? 'erro' : pr !== null && pr < 10 ? 'atencao' : '';
+    return el(`tr${tom ? `.${tom}` : ''}`, null, [
+      el('td.nome', null, [
+        el('span', { texto: l.ds_placa || f.NADA }),
+        el('span.ceo-modelo', { texto: `${l.nr_frota ? `frota ${l.nr_frota} · ` : ''}${l.ds_modelo || l.nm_tipo_veiculo || ''}` }),
+      ]),
+      el('td.num', { texto: f.numero(N(l.qt_ctes) || 0) }),
+      el('td.num', { texto: abreviar(N(l.vl_receita)), title: f.dinheiro(N(l.vl_receita)) }),
+      el('td.num', { texto: abreviar(N(l.vl_combustivel)), title: `combustível: ${f.dinheiro(N(l.vl_combustivel))}` }),
+      el('td.num', { texto: abreviar(N(l.vl_manutencao)), title: `manutenção, peça, pneu e borracharia lançados nesta placa: ${f.dinheiro(N(l.vl_manutencao))}` }),
+      el('td.num', { texto: abreviar(outros(l)), title: `pedágio, pessoal, lavagem, estacionamento e demais lançamentos: ${f.dinheiro(outros(l))}` }),
+      el('td.num', { texto: abreviar(N(l.vl_custo_identificavel)), title: `tudo que foi lançado nesta placa: ${f.dinheiro(N(l.vl_custo_identificavel))}` }),
+      el('td.num.res', { texto: abreviar(con), title: f.dinheiro(con) }),
+      el('td.num.pct', { texto: pr !== null ? `${f.numero(pr, 1)}%` : f.NADA }),
+    ]);
+  };
+
+  const linhaApoio = (l) => el('tr.fora', null, [
+    el('td.nome', null, [
+      el('span', { texto: l.ds_placa || f.NADA }),
+      el('span.ceo-modelo', { texto: l.nm_tipo_veiculo || l.ds_modelo || '' }),
+    ]),
+    el('td.num', { texto: '0' }),
+    el('td.num', { texto: f.NADA }),
+    el('td.num', { texto: abreviar(N(l.vl_combustivel)), title: f.dinheiro(N(l.vl_combustivel)) }),
+    el('td.num', { texto: abreviar(N(l.vl_manutencao)), title: f.dinheiro(N(l.vl_manutencao)) }),
+    el('td.num', { texto: abreviar(outros(l)), title: f.dinheiro(outros(l)) }),
+    el('td.num', { texto: abreviar(N(l.vl_custo_identificavel)), title: f.dinheiro(N(l.vl_custo_identificavel)) }),
+    el('td.num.res', { texto: f.NADA, title: 'não emite CT-e no próprio nome: a receita entra no cavalo que puxa' }),
+    el('td.num.pct', { texto: f.NADA }),
+  ]);
+
+  /* Cavalo é veículo de tração: ele existe para puxar CT-e. Cavalo com custo e
+     sem nenhum CT-e no período não é apoio, é veículo parado gastando — e isso
+     não pode ficar escondido no meio das carretas. */
+  const paradosTracao = apoio.filter((l) => l.id_tracao);
+  const custoParado = paradosTracao.reduce((t, l) => t + (N(l.vl_custo_identificavel) || 0), 0);
+
+  return el('div.ceo-agencias.ceo-veiculos', null, [
+    el('p.ceo-linha-topo', {
+      texto: `${f.numero(puxa.length)} veículo(s) puxam receita: ${f.dinheiro(recPuxa)} contra ${f.dinheiro(cusPuxa)} de despesa lançada na placa, sobra de ${f.dinheiro(recPuxa - cusPuxa)}. Outros ${f.numero(apoio.length)} — carreta, dolly, carro, moto — somam ${f.dinheiro(cusApoio)} de despesa sem receita própria.`,
+    }),
+    paradosTracao.length ? el('p.ceo-contra-nota.erro', {
+      texto: `${f.numero(paradosTracao.length)} veículo(s) de tração gastaram ${f.dinheiro(custoParado)} sem emitir um único CT-e em ${dias} dias: ${paradosTracao.map((l) => l.ds_placa).join(', ')}. Cavalo existe para puxar carga — parado, é só custo.`,
+    }) : null,
+    el('table.tab', null, [
+      el('thead', null, [el('tr', null, [
+        el('th', { texto: 'Placa' }),
+        el('th.num', { texto: 'CT-e' }),
+        el('th.num', { texto: 'Receita' }),
+        el('th.num', { texto: 'Combustível' }),
+        el('th.num', { texto: 'Manutenção' }),
+        el('th.num', { texto: 'Outros' }),
+        el('th.num', { texto: 'Despesa' }),
+        el('th.num', { texto: 'Sobra' }),
+        el('th.num', { texto: '%' }),
+      ])]),
+      el('tbody', null, puxa.map(linha)),
+      apoio.length ? el('tbody.ceo-fora', null, [
+        el('tr.sep', null, [el('td', {
+          colspan: '9',
+          texto: `${f.numero(apoio.length)} unidade(s) de apoio — não emitem CT-e no próprio nome, então têm despesa e não têm receita. Isto não é prejuízo: é custo da frota que já está no cálculo do setor.`,
+        })]),
+        /* Só as dez mais caras aparecem. Setenta e cinco linhas de carreta e
+           carro empurram o resto da Sala do CEO para fora da tela, e o que
+           decide aqui é o topo da lista, não a cauda. */
+        ...apoio.slice(0, 10).map(linhaApoio),
+        apoio.length > 10 ? el('tr.sep', null, [el('td', {
+          colspan: '9',
+          texto: `As outras ${f.numero(apoio.length - 10)} unidades de apoio somam ${f.dinheiro(apoio.slice(10).reduce((t, l) => t + (N(l.vl_custo_identificavel) || 0), 0))} — nenhuma passa de ${f.dinheiro(N(apoio[10].vl_custo_identificavel) || 0)}.`,
+        })]) : null,
+      ]) : null,
+    ]),
+    el('p.ceo-contra-nota', {
+      texto: `Combustível é ${f.numero(cusTotal ? (combTotal / cusTotal) * 100 : 0, 0)}% de tudo que desce na placa; manutenção lançada por placa é só ${f.numero(cusTotal ? (manutTotal / cusTotal) * 100 : 0, 0)}%. Oficina própria, peça em estoque e administração da frota não são apontadas a um veículo — a despesa real de cada placa é maior que a desta tabela.`,
+    }),
+    el('p.ceo-carimbo', {
+      texto: negativos.length
+        ? `${f.numero(negativos.length)} de ${f.numero(puxa.length)} veículos gastaram mais do que faturaram: ${f.dinheiro(perdaNeg)} · janela de ${dias} dias`
+        : `Nenhum veículo com receita fechou no vermelho · janela de ${dias} dias`,
+    }),
+    carimbo(q, 'Resultado por veículo'),
+  ]);
 }
 
 /* ------------------------------------------- contraprova do custo da frota */
@@ -603,14 +732,25 @@ function contraprova(d) {
   if (dito) {
     const vd = String(dito.veredito || '');
     const rotulo = vd === 'confirma' ? 'confirmou' : vd === 'contradiz' ? 'contestou' : 'não conseguiu verificar';
-    corpo.push(el(`div.ceo-assinatura.${vd === 'contradiz' ? 'erro' : vd === 'confirma' ? 'ok' : ''}`, null, [
+    /* A contraprova é diária. Se a última palavra tem mais de trinta horas, a
+       varredura falhou, e isso precisa aparecer: veredito velho exibido sem
+       ressalva vira aval que ninguém deu hoje. */
+    const t = Date.parse(dito.dita_em || '');
+    const horas = Number.isNaN(t) ? null : (Date.now() - t) / 3600000;
+    const velho = horas !== null && horas > 30;
+    corpo.push(el(`div.ceo-assinatura.${velho ? 'velho' : vd === 'contradiz' ? 'erro' : vd === 'confirma' ? 'ok' : ''}`, null, [
       el('span.quem', { texto: `${dito.auditor}${dito.papel ? `, ${dito.papel}` : ''}, ${rotulo}` }),
       el('p', { texto: dito.resumo }),
-      el('span.quando', { texto: `dito em ${diaPorExtenso(dito.dita_em)} às ${horaSeg(dito.dita_em)} · missão ${dito.missao_id}` }),
+      el('span.quando', {
+        texto: `dito ${haQuanto(dito.dita_em) || ''} — ${diaPorExtenso(dito.dita_em)} às ${horaSeg(dito.dita_em)} · missão ${dito.missao_id}`,
+      }),
+      velho ? el('span.atraso', {
+        texto: 'esta contraprova roda todo dia às 17h; a última não é de hoje, então os números acima estão sem conferência de hoje',
+      }) : null,
     ]));
   } else {
     corpo.push(el('p.ceo-contra-nota', {
-      texto: 'Nenhum auditor se pronunciou ainda sobre este custo. Os dois caminhos acima são leitura direta do banco, sem veredito de agente.',
+      texto: 'Nenhum auditor se pronunciou ainda sobre este custo. Os dois caminhos acima são leitura direta do banco, sem veredito de agente. A varredura que chama o Controller roda todo dia às 17h.',
     }));
   }
 

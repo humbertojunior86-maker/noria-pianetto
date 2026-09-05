@@ -2068,3 +2068,20 @@ body.modo-saguao {
   .ceo-vias { grid-template-columns: 1fr; }
   .ceo-vs { text-align: center; }
 }
+.ceo-assinatura.velho { border-color: rgba(242, 198, 109, .38); }
+.ceo-assinatura.velho .quem { color: var(--atencao); }
+.ceo-assinatura .atraso {
+  display: block; margin-top: 6px; font-size: var(--t-mini);
+  color: var(--atencao); line-height: 1.5;
+}
+
+/* -------------------------------------------- resultado por veículo (CEO) */
+.ceo-veiculos .ceo-linha-topo {
+  margin: 0 0 var(--e-3); font-size: var(--t-peq); color: var(--tinta-2);
+  line-height: 1.55;
+}
+.ceo-veiculos td.nome { line-height: 1.3; }
+.ceo-veiculos .ceo-modelo {
+  display: block; font-size: var(--t-micro); color: var(--tinta-4);
+  text-transform: none; letter-spacing: 0;
+}

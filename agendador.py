@@ -153,7 +153,8 @@ ROTINAS = [
      {1, 3, 5}, None),
     # Sábado entra aqui de propósito: CT-e preso na SEFAZ e frete entregue sem
     # título não esperam segunda-feira, e a operação da Pianetto roda no
-    # sábado. Domingo a NÓRIA só concilia — descanso também é decisão.
+    # sábado. Domingo a NÓRIA concilia e apura o resultado por setor; o resto
+    # descansa, porque descanso também é decisão.
     ("cte_pendente", "fiscal: CT-e sem autorização da SEFAZ", 12,
      {0, 1, 2, 3, 4, 5}, None),
     ("receber30", "cobrança: a receber +30 dias", 13, {0, 2, 4}, None),
@@ -162,8 +163,12 @@ ROTINAS = [
     ("pagar15", "contas a pagar: vencidos +15 dias", 16, {1, 3}, None),
     ("frota_veiculo", "frota: resultado por veículo", 17, {0}, None),
     ("margem_cte", "controladoria: margem por CT-e", 17, {4}, None),
-    ("setor_lucratividade", "controladoria: resultado por setor", 17, {1, 4},
-     None),
+    # Todo dia, sem exceção de domingo. Esta varredura carrega a contraprova
+    # do custo da frota, e contraprova que só roda duas vezes por semana
+    # sustenta um número de até três dias atrás na tela do CEO. O peso é
+    # baixo: três consultas de menos de um segundo, fora do pico do ERP.
+    ("setor_lucratividade", "controladoria: resultado por setor e contraprova "
+     "do custo da frota", 17, None, None),
     ("receber_fim_de_dia", "cobrança: fechamento do dia", 18, {0, 1, 2, 3, 4},
      None),
 ]

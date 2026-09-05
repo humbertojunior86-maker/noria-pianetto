@@ -167,7 +167,12 @@ def _ceo_erp(emp: int) -> dict:
             # Ela vem para a tela junto com o número que ela contesta: separar
             # os dois deixaria o CEO ler a margem sem ler a dúvida sobre ela.
             ("contraprova.lucratividade_custo_frota", "contraprova_frota",
-             {"dias": 90})):
+             {"dias": 90}),
+            # A frota so vira decisao quando desce a placa. Trinta cavalos
+            # puxam receita; o resto do cadastro so gera despesa, e isso
+            # precisa aparecer separado, nao diluido no custo do setor.
+            ("frota.resultado_veiculo", "veiculo",
+             {"dias": 90, "cd_pessoa_filial": None, "limite": 300})):
         r = fb.rodar("atua", op, par, empresa_id=emp,
                      acoes_permitidas=[f"atua.{op}"])
         if r.ok:
