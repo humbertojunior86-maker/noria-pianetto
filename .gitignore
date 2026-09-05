@@ -1,2 +1,7 @@
-.vercel
-node_modules
+__pycache__/
+*.pyc
+dados/noria.db
+dados/noria.db-wal
+dados/noria.db-shm
+artefatos/
+.secrets/

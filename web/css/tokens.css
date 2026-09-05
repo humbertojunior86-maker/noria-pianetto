@@ -1,0 +1,261 @@
+/* ==========================================================================
+   NÓRIA — Sistema de design (tokens)
+   CEO de Inteligência Artificial da Pianetto Transportes
+   --------------------------------------------------------------------------
+   Paleta derivada do logo: cérebro cromado, núcleo ciano/verde-água,
+   trilhas luminosas, tudo sobre grafite quase preto.
+   Regra geral: superfície escura e neutra, cromo para bordas e metal,
+   UM acento (verde-água) reservado para ação, núcleo e estado ativo.
+   Espaçamento em múltiplos de 4. Raios entre 10 e 12px.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  /* ----- Superfícies ---------------------------------------------------- */
+  --fundo: #101318;        /* fundo da aplicação (grafite quase preto)      */
+  --painel: #191E26;       /* cartões, painéis, barras                      */
+  --painel-alto: #222936;  /* elevação: hover, cabeçalhos, campos           */
+  --painel-fundo: #0B0E12; /* recuo: poços, código, faixas de log           */
+
+  /* ----- Tinta (texto) -------------------------------------------------- */
+  --tinta: #F3F5F7;        /* títulos e texto primário                      */
+  --tinta-2: #ADB7C6;      /* texto secundário, descrições                  */
+  --tinta-3: #6F7B8C;      /* rótulos, metadados, placeholders              */
+  --tinta-4: #4A5464;      /* texto desativado, marcas d'água               */
+
+  /* ----- Acento e semântica -------------------------------------------- */
+  --acento: #50D6BC;         /* verde-água: ações principais e núcleo       */
+  --acento-forte: #6FE6CE;   /* hover/foco do acento                        */
+  --acento-fundo: rgba(80, 214, 188, .12);  /* preenchimento suave          */
+  --acento-linha: rgba(80, 214, 188, .34);  /* borda em estado ativo        */
+  --ok: #68D391;             /* validado, conciliado                        */
+  --atencao: #F2C66D;        /* pendência, evidência faltando               */
+  --erro: #F08080;           /* falha, divergência                          */
+  --ok-fundo: rgba(104, 211, 145, .12);
+  --atencao-fundo: rgba(242, 198, 109, .12);
+  --erro-fundo: rgba(240, 128, 128, .12);
+
+  /* ----- Cromo (metal do logo) ----------------------------------------- */
+  --cromo: #C6CFDA;
+  --cromo-2: #8E99A8;
+  /* Gradiente de metal escovado — usado na marca e em detalhes finos */
+  --cromo-metal: linear-gradient(
+    170deg,
+    #EEF2F6 0%,
+    #C6CFDA 22%,
+    #7F8B9B 48%,
+    #D6DEE7 68%,
+    #9AA5B4 88%,
+    #E7ECF2 100%
+  );
+
+  /* ----- Linhas --------------------------------------------------------- */
+  --linha: rgba(243, 245, 247, .08);   /* divisórias internas              */
+  --linha-2: rgba(243, 245, 247, .14); /* borda de painel                  */
+  --linha-3: rgba(243, 245, 247, .22); /* borda em destaque / hover        */
+
+  /* ----- Tipografia ----------------------------------------------------- */
+  --display: "Cabinet Grotesk", "Satoshi", system-ui, -apple-system, sans-serif;
+  --corpo: "Satoshi", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Escala: corpo em ~15.5px; passos contidos, nada de tipo gigante */
+  --t-micro: 10.5px;   /* etiquetas mono em caixa alta                     */
+  --t-mini: 11.5px;    /* rótulos de campo, legendas de gráfico            */
+  --t-peq: 13px;       /* texto auxiliar, tabelas densas                   */
+  --t-base: 15.5px;    /* texto principal                                  */
+  --t-md: 17px;        /* subtítulo, texto de destaque                     */
+  --t-lg: 20px;        /* título de painel                                 */
+  --t-xl: 25px;        /* título de seção                                  */
+  --t-2xl: 32px;       /* título de página                                 */
+  --t-3xl: 42px;       /* marca / abertura                                 */
+
+  --peso-normal: 400;
+  --peso-medio: 500;
+  --peso-forte: 700;
+  --peso-display: 800;
+
+  --altura-apertada: 1.15;  /* títulos                                     */
+  --altura-media: 1.35;     /* interface                                   */
+  --altura-solta: 1.6;      /* parágrafos                                  */
+
+  --letra-apertada: -.02em; /* display                                     */
+  --letra-normal: 0;
+  --letra-larga: .06em;     /* mono em caixa alta                          */
+  --letra-extra: .14em;     /* etiquetas de sistema                        */
+
+  /* ----- Espaçamento (múltiplos de 4) ----------------------------------- */
+  --e-1: 4px;
+  --e-2: 8px;
+  --e-3: 12px;
+  --e-4: 16px;
+  --e-5: 20px;
+  --e-6: 24px;
+  --e-8: 32px;
+  --e-10: 40px;
+  --e-12: 48px;
+  --e-16: 64px;
+  --e-20: 80px;
+  --e-24: 96px;
+
+  /* ----- Raios (10–12px, conforme pedido) ------------------------------- */
+  --raio-min: 6px;    /* etiquetas, chips                                  */
+  --raio: 10px;       /* botões, campos                                    */
+  --raio-md: 12px;    /* painéis e cartões                                 */
+  --raio-lg: 16px;    /* modais e superfícies grandes                      */
+  --raio-total: 999px;
+
+  /* ----- Sombras (discretas: profundidade, não drama) ------------------- */
+  --sombra-1: 0 1px 2px rgba(0, 0, 0, .30);
+  --sombra-2: 0 2px 8px rgba(0, 0, 0, .34);
+  --sombra-3: 0 8px 24px rgba(0, 0, 0, .40);
+  --sombra-4: 0 18px 48px rgba(0, 0, 0, .48);
+  --sombra-interna: inset 0 1px 0 rgba(243, 245, 247, .05);
+  /* brilho do núcleo — único efeito luminoso permitido */
+  --brilho-nucleo: 0 0 0 1px rgba(80, 214, 188, .30), 0 0 20px rgba(80, 214, 188, .22);
+  --foco: 0 0 0 2px rgba(80, 214, 188, .55);
+
+  /* ----- Movimento ------------------------------------------------------ */
+  --dur-1: 120ms;   /* estados imediatos                                   */
+  --dur-2: 200ms;   /* transições de interface                             */
+  --dur-3: 340ms;   /* entrada de painéis                                  */
+  --dur-4: 620ms;   /* narrativa (abertura)                                */
+  --curva: cubic-bezier(.22, .61, .36, 1);
+  --curva-suave: cubic-bezier(.4, 0, .2, 1);
+
+  /* ----- Estrutura ------------------------------------------------------ */
+  --larg-max: 1360px;
+  --larg-lateral: 268px;
+  --alt-topo: 56px;
+  --z-base: 0;
+  --z-flutuante: 20;
+  --z-topo: 40;
+  --z-modal: 60;
+  --z-abertura: 100;
+}
+
+/* ==========================================================================
+   Tema claro — mesma estrutura, mesmo acento, contraste invertido.
+   Aplicar com <html data-tema="claro">.
+   ========================================================================== */
+[data-tema="claro"] {
+  color-scheme: light;
+
+  --fundo: #F4F6F9;
+  --painel: #FFFFFF;
+  --painel-alto: #EDF1F6;
+  --painel-fundo: #E4E9F0;
+
+  --tinta: #141922;
+  --tinta-2: #414D5E;
+  --tinta-3: #6B7789;
+  --tinta-4: #98A3B3;
+
+  /* acento escurecido o suficiente para texto e ícones sobre branco */
+  --acento: #0E9C82;
+  --acento-forte: #0B7F6A;
+  --acento-fundo: rgba(14, 156, 130, .10);
+  --acento-linha: rgba(14, 156, 130, .32);
+  --ok: #2F9159;
+  --atencao: #A9761A;
+  --erro: #C0504A;
+  --ok-fundo: rgba(47, 145, 89, .10);
+  --atencao-fundo: rgba(169, 118, 26, .12);
+  --erro-fundo: rgba(192, 80, 74, .10);
+
+  --cromo: #5C6878;
+  --cromo-2: #8A95A4;
+  --cromo-metal: linear-gradient(
+    170deg,
+    #6E7A8A 0%,
+    #39424F 24%,
+    #7B8797 46%,
+    #2E3641 70%,
+    #66727F 100%
+  );
+
+  --linha: rgba(20, 25, 34, .09);
+  --linha-2: rgba(20, 25, 34, .15);
+  --linha-3: rgba(20, 25, 34, .24);
+
+  --sombra-1: 0 1px 2px rgba(20, 25, 34, .08);
+  --sombra-2: 0 2px 8px rgba(20, 25, 34, .10);
+  --sombra-3: 0 8px 24px rgba(20, 25, 34, .12);
+  --sombra-4: 0 18px 48px rgba(20, 25, 34, .16);
+  --sombra-interna: inset 0 1px 0 rgba(255, 255, 255, .8);
+  --brilho-nucleo: 0 0 0 1px rgba(14, 156, 130, .28), 0 0 18px rgba(14, 156, 130, .18);
+  --foco: 0 0 0 2px rgba(14, 156, 130, .45);
+}
+
+/* ==========================================================================
+   Base mínima — só o necessário para que os tokens valham em qualquer página.
+   ========================================================================== */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--fundo);
+  color: var(--tinta);
+  font-family: var(--corpo);
+  font-size: var(--t-base);
+  line-height: var(--altura-media);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--display);
+  font-weight: var(--peso-display);
+  letter-spacing: var(--letra-apertada);
+  line-height: var(--altura-apertada);
+  margin: 0;
+}
+
+code, pre, .mono, [data-num] {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+:where(a) { color: var(--acento); text-decoration: none; }
+
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--foco);
+  border-radius: var(--raio-min);
+}
+
+::selection { background: var(--acento-fundo); color: var(--tinta); }
+
+/* Marca em metal escovado — usada na abertura e no topo */
+.marca-cromo {
+  background: var(--cromo-metal);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ==========================================================================
+   Acessibilidade: movimento reduzido desliga toda animação e transição.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-1: 0ms;
+    --dur-2: 0ms;
+    --dur-3: 0ms;
+    --dur-4: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

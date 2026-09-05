@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NÓRIA — abertura (teste)</title>
+<link rel="preconnect" href="https://api.fontshare.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,700,500&f[]=satoshi@400,500,700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="./css/tokens.css">
+<style>
+  html, body { height: 100%; overflow: hidden; }
+
+  .palco {
+    position: fixed;
+    inset: 0;
+    background: var(--fundo);
+    z-index: var(--z-abertura);
+  }
+
+  /* canvas ocupa o palco inteiro */
+  #tela { position: absolute; inset: 0; }
+
+  /* marca no topo */
+  .marca {
+    position: absolute;
+    top: var(--e-8);
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: baseline;
+    gap: var(--e-3);
+    white-space: nowrap;
+    z-index: 2;
+    animation: surge var(--dur-4) var(--curva) both;
+  }
+  .marca__nome {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: clamp(22px, 3.2vw, 34px);
+    letter-spacing: .10em;
+    background: var(--cromo-metal);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .marca__sep {
+    color: var(--acento);
+    opacity: .7;
+    font-size: var(--t-md);
+    line-height: 1;
+  }
+  .marca__papel {
+    font-family: var(--corpo);
+    font-weight: 500;
+    font-size: clamp(11px, 1.05vw, 14px);
+    color: var(--tinta-3);
+    letter-spacing: .02em;
+  }
+
+  /* botão pular */
+  .pular {
+    position: absolute;
+    right: var(--e-6);
+    bottom: var(--e-6);
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--e-2);
+    padding: 9px var(--e-4);
+    border: 1px solid var(--linha-2);
+    border-radius: var(--raio);
+    background: color-mix(in srgb, var(--painel) 80%, transparent);
+    color: var(--tinta-2);
+    font-family: var(--mono);
+    font-size: var(--t-mini);
+    letter-spacing: .10em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color var(--dur-2) var(--curva),
+                border-color var(--dur-2) var(--curva),
+                background var(--dur-2) var(--curva);
+  }
+  .pular:hover {
+    color: var(--tinta);
+    border-color: var(--acento-linha);
+    background: var(--painel-alto);
+  }
+  .pular__tecla {
+    font-size: var(--t-micro);
+    color: var(--tinta-4);
+    border: 1px solid var(--linha);
+    border-radius: var(--raio-min);
+    padding: 1px 5px;
+  }
+
+  /* estado após a sequência */
+  .concluido {
+    position: absolute;
+    top: var(--e-8);
+    right: var(--e-6);
+    font-family: var(--mono);
+    font-size: var(--t-mini);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--acento);
+    opacity: 0;
+    transition: opacity var(--dur-3) var(--curva);
+  }
+  .concluido[data-visivel="1"] { opacity: .9; }
+
+  @keyframes surge {
+    from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+
+  @media (max-width: 700px) {
+    .marca { flex-direction: column; align-items: center; gap: var(--e-1); top: var(--e-6); }
+    .marca__sep { display: none; }
+    .pular { right: 50%; transform: translateX(50%); bottom: var(--e-4); }
+    .concluido { top: auto; bottom: calc(var(--e-16) + var(--e-6)); right: 50%; transform: translateX(50%); }
+  }
+</style>
+</head>
+<body>
+  <div class="palco">
+    <header class="marca">
+      <span class="marca__nome">NÓRIA</span>
+      <span class="marca__sep">·</span>
+      <span class="marca__papel">CEO de Inteligência Artificial da Pianetto</span>
+    </header>
+
+    <div id="tela"></div>
+
+    <p class="concluido" id="concluido">sequência concluída</p>
+
+    <button class="pular" id="btPular" type="button">
+      Pular <span class="pular__tecla">esc</span>
+    </button>
+  </div>
+
+  <script type="module">
+    import { abertura, pular } from './js/abertura.js';
+
+    const tela = document.getElementById('tela');
+    const bt = document.getElementById('btPular');
+    const fim = document.getElementById('concluido');
+
+    function iniciar() {
+      abertura(tela, () => {
+        fim.dataset.visivel = '1';
+        bt.textContent = 'Concluído';
+      });
+    }
+
+    bt.addEventListener('click', pular);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') pular(); });
+
+    // espera as fontes para que o mono do log já saia no tipo certo
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(iniciar);
+    } else {
+      iniciar();
+    }
+  </script>
+</body>
+</html>
