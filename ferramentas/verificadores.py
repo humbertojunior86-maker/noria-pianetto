@@ -68,6 +68,14 @@ def soma_confere(afirmado: dict, bruto: dict, params: dict) -> tuple[str, str]:
 def contagem_confere(afirmado: dict, bruto: dict, params: dict) -> tuple[str, str]:
     chave = params.get("chave", "quantidade")
     linhas = bruto.get("linhas", [])
+    # Consulta que devolve linha de total junto com linha de detalhe não pode
+    # ser conferida contra o total bruto de linhas. `onde` diz qual subconjunto
+    # o agente afirmou ter contado — sem isso o verificador reprovava o agente
+    # honesto por comparar laranja com o caixote inteiro.
+    onde = params.get("onde") or {}
+    if onde:
+        linhas = [r for r in linhas
+                  if all(r.get(k) == v for k, v in onde.items())]
     dito = int(afirmado.get(chave) or 0)
     if afirmado.get("truncado"):
         if len(linhas) > dito:
@@ -119,14 +127,22 @@ def toda_afirmacao_tem_evidencia(afirmado: dict, bruto: dict,
     entrega_id = params.get("entrega_id")
     if not entrega_id:
         return "nao_verificavel", "entrega não identificada"
+    # Cobre fato E indício. Antes olhava só `fato`, e um agente honesto que
+    # marcava suas conclusões como indício — que é o certo para duplicidade,
+    # margem e cliente que sumiu — passava por agente que não afirmou nada.
+    # A exigência de lastro é maior no indício, não menor.
     fatos = bd.linhas(
-        "SELECT id, texto, evidencia_id FROM afirmacao "
-        "WHERE entrega_id=? AND natureza='fato'", (entrega_id,))
+        "SELECT id, texto, evidencia_id, natureza FROM afirmacao "
+        "WHERE entrega_id=? AND natureza IN ('fato','indicio')", (entrega_id,))
     orfas = [f for f in fatos if not f["evidencia_id"]]
     if not fatos:
         return "nao_verificavel", "a entrega não declarou nenhuma afirmação"
     if not orfas:
-        return "aprovado", f"{len(fatos)} afirmação(ões) com evidência ligada"
+        qt_i = sum(1 for f in fatos if f["natureza"] == "indicio")
+        detalhe = f"{len(fatos)} afirmação(ões) com evidência ligada"
+        if qt_i:
+            detalhe += f" ({qt_i} declarada(s) como indício, não como fato)"
+        return "aprovado", detalhe
     return "reprovado", (
         f"{len(orfas)} de {len(fatos)} afirmação(ões) sem evidência — "
         f"ex.: “{orfas[0]['texto'][:90]}”")

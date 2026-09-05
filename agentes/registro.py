@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Callable
 
 from ferramentas import base as fb
@@ -276,6 +277,714 @@ def exec_carteira_vencida(*, empresa_id, missao_id, tarefa_id, entradas,
                    resultado, afirm, evid, incert, bruto={"linhas": linhas})
 
 
+def _f(v) -> float:
+    """Número do Postgres chega como Decimal; aritmética exige float."""
+    try:
+        return float(v or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _linha(l: dict, campos: tuple[str, ...]) -> dict:
+    """Recorta a linha para a amostra da tela.
+
+    Data e Decimal viram texto/número aqui, e não no front: a interface não pode
+    ser responsável por adivinhar o tipo que o ERP devolveu. Texto continua
+    texto — CNPJ com zero à esquerda convertido em número deixa de ser CNPJ.
+    """
+    def _valor(v):
+        if v is None or isinstance(v, (bool, int, float, str)):
+            return v
+        if isinstance(v, Decimal):
+            return round(float(v), 2)
+        if isinstance(v, list):
+            return [_valor(x) for x in v]
+        return str(v)   # data, hora e o que mais o driver devolver
+
+    return {c: _valor(l.get(c)) for c in campos}
+
+
+def exec_pagar_duplicidade(*, empresa_id, missao_id, tarefa_id, entradas,
+                           acoes) -> Entrega:
+    """Fila de conferência de possível pagamento repetido a fornecedor.
+
+    O que a consulta encontra é coincidência — mesmo fornecedor, mesmo valor,
+    vencimentos próximos. Dois caminhões iguais comprados no mesmo dia do mesmo
+    revendedor têm exatamente esta assinatura. Por isso nenhuma afirmação deste
+    executor sai como fato: sai como indício, ordenado por dinheiro em risco.
+    """
+    dias = int(entradas.get("dias", 5))
+    dias_retro = int(entradas.get("dias_retro", 365))
+    vl_min = float(entradas.get("vl_min", 100))
+    max_parcelas = int(entradas.get("max_parcelas", 3))
+    limite = int(entradas.get("limite", 200))
+    r = fb.rodar("atua", "pagar.duplicidade_suspeita",
+                 {"dias": dias, "dias_retro": dias_retro, "vl_min": vl_min,
+                  "max_parcelas": max_parcelas, "limite": limite,
+                  "cd_pessoa_filial": entradas.get("cd_pessoa_filial")},
+                 empresa_id=empresa_id, missao_id=missao_id,
+                 tarefa_id=tarefa_id, acoes_permitidas=acoes)
+    if not r.ok:
+        return Entrega("bloqueada", f"consulta indisponível: {r.erro}", {},
+                       pendencias=[r.erro or "falha na varredura de duplicidade"])
+    linhas = r.dados["linhas"]
+
+    # A consulta não devolve total da janela: o corte por `limite` esconde o
+    # tamanho real do conjunto. Quando o limite é atingido, os números abaixo
+    # valem para os grupos trazidos — dizer que são todos seria falso.
+    truncado = len(linhas) >= limite
+
+    grupos = len(linhas)
+    titulos = sum(int(l["qt_titulos"] or 0) for l in linhas)
+    exposicao = sum(_f(l["vl_exposicao"]) for l in linhas)
+    altas = [l for l in linhas if l.get("confianca") == "alta"]
+    exposicao_alta = sum(_f(l["vl_exposicao"]) for l in altas)
+    pago_alta = sum(_f(l["vl_ja_pago"]) for l in altas)
+
+    campos = ("fornecedor", "nr_cnpj_cpf", "vl_titulo", "qt_titulos",
+              "vl_exposicao", "qt_pagos", "vl_ja_pago", "venc_ini", "venc_fim",
+              "dias_entre", "confianca", "ar_cd_titulo")
+    resultado = {
+        "grupos": grupos, "titulos": titulos,
+        "exposicao": round(exposicao, 2),
+        "grupos_confianca_alta": len(altas),
+        "exposicao_confianca_alta": round(exposicao_alta, 2),
+        "valor_ja_pago_confianca_alta": round(pago_alta, 2),
+        "janela_dias": dias, "dias_retro": dias_retro,
+        "valor_minimo": round(vl_min, 2), "max_parcelas": max_parcelas,
+        "linhas_trazidas": grupos, "truncado": truncado,
+        "amostra": [_linha(l, campos) for l in linhas[:15]],
+    }
+    evid = [_ev("consulta", "atua:pagar.duplicidade_suspeita", r.referencia,
+                f"{grupos} grupo(s) de títulos a pagar com fornecedor e valor "
+                f"repetidos e vencimentos a menos de {dias} dias de distância, "
+                f"nos últimos {dias_retro} dias",
+                "atua:titulo", r.dados["consultada_em"])]
+    afirm = [
+        {"texto": f"Há {grupos} grupo(s) de títulos a pagar que repetem o mesmo "
+                  f"fornecedor e o mesmo valor com vencimentos a menos de "
+                  f"{dias} dias de distância — {titulos} títulos no total, com "
+                  f"exposição de {brl(exposicao)} caso cada repetição seja "
+                  f"mesmo um pagamento a mais. É coincidência a conferir, não "
+                  f"duplicidade comprovada.",
+         "natureza": "indicio", "evidencia": 0},
+    ]
+    if altas:
+        afirm.append({
+            "texto": f"{len(altas)} desses grupos vencem todos no mesmo dia e "
+                     f"já estão inteiramente quitados: {brl(pago_alta)} saíram "
+                     f"do caixa nesses grupos, dos quais {brl(exposicao_alta)} "
+                     f"correspondem às repetições.",
+            "natureza": "indicio", "evidencia": 0})
+
+    incert = [
+        "a consulta prova coincidência, não duplicidade: dois veículos iguais "
+        "comprados no mesmo dia do mesmo revendedor geram exatamente esta "
+        "assinatura, e os maiores valores da lista têm essa cara",
+        "seguro por veículo é falso positivo estrutural — a seguradora emite "
+        "uma apólice por placa e frota igual gera prêmio igual",
+        f"títulos abaixo de {brl(vl_min)} ficaram fora, então duplicidade "
+        f"pequena e repetitiva (tarifa bancária, pedágio avulso) não aparece",
+        "o agrupamento é por valor exato com duas casas: repetição com centavo "
+        "de diferença por juro ou desconto escapa",
+        f"parcelamentos em mais de {max_parcelas} vezes foram descartados para "
+        f"tirar financiamento de frota da frente; duplicidade dentro de uma "
+        f"compra parcelada em 4 vezes ou mais não entra aqui",
+        "nada aqui olhou o extrato bancário: dois títulos quitados no ERP não "
+        "são prova de duas saídas de caixa — a confirmação é abrir os títulos e "
+        "conferir o pagamento no banco",
+    ]
+    if truncado:
+        incert.append(
+            f"o limite de {limite} grupos foi atingido, então existem outros "
+            f"grupos além dos trazidos: a contagem e a exposição acima são dos "
+            f"{limite} de maior valor, não do conjunto inteiro")
+
+    return Entrega(
+        "concluida",
+        f"{grupos} grupo(s) suspeitos de pagamento repetido, {brl(exposicao)} "
+        f"de exposição a conferir ({len(altas)} de confiança alta).",
+        resultado, afirm, evid, incert, bruto={"linhas": linhas},
+    )
+
+
+def exec_faturamento_cte_sem_titulo(*, empresa_id, missao_id, tarefa_id,
+                                    entradas, acoes) -> Entrega:
+    """CT-e autorizado na SEFAZ que não gerou título a receber.
+
+    O teste é binário e recomputável: `ctrc.cd_movimento IS NULL` foi validado
+    como equivalente a "não existe título". Por isso a contagem e a soma são
+    fato — o que não é fato é o motivo de cada CT-e estar assim.
+    """
+    dias = int(entradas.get("dias", 30))
+    carencia = int(entradas.get("carencia_dias", 0))
+    limite = int(entradas.get("limite", 200))
+    r = fb.rodar("atua", "faturamento.cte_sem_titulo",
+                 {"dias": dias, "carencia_dias": carencia, "limite": limite,
+                  "cd_pessoa_filial": entradas.get("cd_pessoa_filial")},
+                 empresa_id=empresa_id, missao_id=missao_id,
+                 tarefa_id=tarefa_id, acoes_permitidas=acoes)
+    if not r.ok:
+        return Entrega("bloqueada", f"consulta indisponível: {r.erro}", {},
+                       pendencias=[r.erro or "falha na varredura de faturamento"])
+    linhas = r.dados["linhas"]
+
+    # A consulta traz o total da janela em toda linha (count/sum OVER ()).
+    # Quando o corte por `limite` age, o detalhamento é parcial mas o total
+    # continua correto — o número exibido é o do conjunto, nunca o das linhas.
+    qt_total = int(linhas[0]["qt_total"]) if linhas else 0
+    vl_total = _f(linhas[0]["vl_total_geral"]) if linhas else 0.0
+    truncado = qt_total > len(linhas)
+
+    velhos = [l for l in linhas if int(l.get("dias_sem_faturar") or 0) >= 30]
+    vl_velhos = sum(_f(l["vl_total"]) for l in velhos)
+    campos = ("nr_ctrc", "ds_serie", "dt_emissao", "vl_total", "cliente",
+              "nr_cnpj_cpf", "filial", "dias_sem_faturar", "id_frete",
+              "id_tipo_ctrc", "nr_chave")
+    resultado = {
+        "quantidade": qt_total, "valor": round(vl_total, 2),
+        "janela_dias": dias, "carencia_dias": carencia,
+        "linhas_trazidas": len(linhas), "truncado": truncado,
+        "trazidos_com_30_dias_ou_mais": len(velhos),
+        "valor_trazidos_com_30_dias_ou_mais": round(vl_velhos, 2),
+        "amostra": [_linha(l, campos) for l in linhas[:15]],
+    }
+    evid = [_ev("consulta", "atua:faturamento.cte_sem_titulo", r.referencia,
+                f"{qt_total} CT-e(s) autorizados pela SEFAZ e não cancelados, "
+                f"emitidos nos últimos {dias} dias, sem título a receber "
+                f"vinculado, somando {brl(vl_total)}",
+                "atua:ctrc", r.dados["consultada_em"])]
+    afirm = [
+        {"texto": f"{qt_total} CT-e(s) autorizados pela SEFAZ nos últimos "
+                  f"{dias} dias não têm nenhum título a receber no ERP, "
+                  f"somando {brl(vl_total)} de frete.",
+         "natureza": "fato", "evidencia": 0},
+    ]
+    if velhos:
+        afirm.append({
+            "texto": f"Entre os CT-es detalhados, {len(velhos)} já passaram de "
+                     f"30 dias da emissão sem gerar título ({brl(vl_velhos)}) — "
+                     f"tempo em que qualquer rotina normal de faturamento já "
+                     f"teria rodado.",
+            "natureza": "indicio", "evidencia": 0})
+
+    incert = [
+        "CT-e sem título não é necessariamente frete não cobrado: "
+        "subcontratação, redespacho e complemento podem ser faturados por fora "
+        "ou não gerar cobrança própria — a modalidade e o tipo vão na amostra "
+        "justamente para o analista separar, porque não existe regra limpa de "
+        "exclusão",
+        f"a carência usada foi de {carencia} dia(s), então o lote de "
+        f"faturamento que ainda está rodando entra na lista; se a Pianetto "
+        f"fatura quinzenal, esse parâmetro deveria subir",
+        "o que está provado é que o ERP não tem título: cobrança feita por fora "
+        "do sistema não apareceria aqui",
+        "só entram CT-es autorizados pela SEFAZ; documento não transmitido é "
+        "assunto do Analista Fiscal, não deste levantamento",
+    ]
+    if truncado:
+        incert.append(
+            f"o detalhamento traz os {len(linhas)} de maior valor; a contagem e "
+            f"a soma acima são do conjunto inteiro ({qt_total} CT-es)")
+
+    return Entrega(
+        "concluida",
+        f"{qt_total} CT-e(s) autorizados sem título a receber nos últimos "
+        f"{dias} dias, {brl(vl_total)} não faturados.",
+        resultado, afirm, evid, incert, bruto={"linhas": linhas},
+    )
+
+
+def exec_comercial_cliente_sumiu(*, empresa_id, missao_id, tarefa_id, entradas,
+                                 acoes) -> Entrega:
+    """Cliente regular que parou de emitir CT-e ou caiu muito de volume.
+
+    A comparação é entre duas janelas do mesmo ano, e a carteira da Pianetto é
+    agro: entressafra contra safra acusa o setor inteiro. Nada aqui é fato de
+    perda de cliente — é queda medida, que ainda precisa de leitura humana.
+    """
+    dias_base = int(entradas.get("dias_base", 180))
+    dias_recente = int(entradas.get("dias_recente", 60))
+    meses_min = int(entradas.get("meses_min", 3))
+    vl_mensal_min = float(entradas.get("vl_mensal_min", 5000))
+    pr_queda_min = float(entradas.get("pr_queda_min", 60))
+    limite = int(entradas.get("limite", 100))
+    r = fb.rodar("atua", "comercial.cliente_que_sumiu",
+                 {"dias_base": dias_base, "dias_recente": dias_recente,
+                  "meses_min": meses_min, "vl_mensal_min": vl_mensal_min,
+                  "pr_queda_min": pr_queda_min, "limite": limite,
+                  "cd_pessoa_filial": entradas.get("cd_pessoa_filial")},
+                 empresa_id=empresa_id, missao_id=missao_id,
+                 tarefa_id=tarefa_id, acoes_permitidas=acoes)
+    if not r.ok:
+        return Entrega("bloqueada", f"consulta indisponível: {r.erro}", {},
+                       pendencias=[r.erro or "falha na varredura comercial"])
+    linhas = r.dados["linhas"]
+    # Sem total da janela na saída: se o limite encheu, o corte é invisível.
+    truncado = len(linhas) >= limite
+
+    pararam = [l for l in linhas if l.get("situacao") == "parou"]
+    cairam = [l for l in linhas if l.get("situacao") == "caiu"]
+    perda = sum(_f(l["vl_perda_mensal"]) for l in linhas)
+    perda_parou = sum(_f(l["vl_perda_mensal"]) for l in pararam)
+    # Um único cliente grande distorce o total; quem lê precisa ver isso.
+    maior = max(linhas, key=lambda l: _f(l["vl_perda_mensal"])) if linhas else None
+    perda_maior = _f(maior["vl_perda_mensal"]) if maior else 0.0
+
+    campos = ("cliente", "nr_cnpj_cpf", "meses_ativos", "qt_base",
+              "vl_media_mensal_anterior", "qt_recente",
+              "vl_media_mensal_recente", "pr_queda", "vl_perda_mensal",
+              "dt_ultimo_cte", "dias_sem_cte", "situacao")
+    resultado = {
+        "clientes": len(linhas), "pararam": len(pararam), "cairam": len(cairam),
+        "perda_mensal": round(perda, 2),
+        "perda_mensal_de_quem_parou": round(perda_parou, 2),
+        "maior_perda_cliente": (maior["cliente"] if maior else None),
+        "maior_perda_mensal": round(perda_maior, 2),
+        "perda_mensal_sem_o_maior": round(perda - perda_maior, 2),
+        "dias_base": dias_base, "dias_recente": dias_recente,
+        "queda_minima_pct": pr_queda_min,
+        "linhas_trazidas": len(linhas), "truncado": truncado,
+        "amostra": [_linha(l, campos) for l in linhas[:15]],
+    }
+    evid = [_ev("consulta", "atua:comercial.cliente_que_sumiu", r.referencia,
+                f"{len(linhas)} cliente(s) com pelo menos {meses_min} meses de "
+                f"emissão nos {dias_base} dias anteriores e queda acima de "
+                f"{pr_queda_min:.0f}% nos últimos {dias_recente} dias",
+                "atua:ctrc", r.dados["consultada_em"])]
+    afirm = [
+        {"texto": f"{len(linhas)} cliente(s) que faturavam com regularidade "
+                  f"caíram mais de {pr_queda_min:.0f}% nos últimos "
+                  f"{dias_recente} dias em relação à média mensal dos "
+                  f"{dias_base} dias anteriores, o equivalente a {brl(perda)} "
+                  f"por mês de receita que deixou de entrar.",
+         "natureza": "indicio", "evidencia": 0},
+    ]
+    if pararam:
+        afirm.append({
+            "texto": f"{len(pararam)} desses clientes não emitiram nenhum CT-e "
+                     f"nos últimos {dias_recente} dias — pararam por completo, "
+                     f"e respondem por {brl(perda_parou)} por mês.",
+            "natureza": "indicio", "evidencia": 0})
+    if maior:
+        afirm.append({
+            "texto": f"A maior queda isolada é de {maior['cliente']}, "
+                     f"{brl(perda_maior)} por mês "
+                     f"({pct(_f(maior['pr_queda']) / 100)} de queda, situação "
+                     f"'{maior['situacao']}'); sem esse cliente a lista soma "
+                     f"{brl(perda - perda_maior)} por mês.",
+            "natureza": "indicio", "evidencia": 0})
+
+    incert = [
+        "quem está marcado como 'caiu' não sumiu: pode ter emitido CT-e hoje. "
+        "A consulta mede queda de volume, não abandono — separe pela situação "
+        "antes de mandar alguém ligar",
+        "a comparação é entre dois períodos do mesmo ano e a carteira é agro: "
+        "entressafra contra safra derruba o setor inteiro e vira falso positivo "
+        "em massa; a leitura honesta seria contra o mesmo período do ano "
+        "anterior",
+        "o agrupamento é pelo CNPJ pagador, não por grupo econômico: cliente "
+        "que passou a faturar por outro CNPJ aparece como perdido aqui e como "
+        "novo em outro lugar",
+        f"a janela olhada é de {dias_base + dias_recente} dias: cliente parado "
+        f"há mais tempo que isso não entra na lista, porque não sobra base de "
+        f"comparação",
+        "nada aqui olhou título nem inadimplência: cliente bloqueado por débito "
+        "de propósito aparece como perda, quando foi decisão da empresa",
+    ]
+    if truncado:
+        incert.append(
+            f"o limite de {limite} clientes foi atingido: existem outros além "
+            f"dos trazidos, e os números acima são dos {limite} de maior perda")
+
+    return Entrega(
+        "concluida",
+        f"{len(linhas)} cliente(s) em queda forte, {brl(perda)}/mês a menos "
+        f"({len(pararam)} pararam de emitir).",
+        resultado, afirm, evid, incert, bruto={"linhas": linhas},
+    )
+
+
+def exec_controladoria_margem(*, empresa_id, missao_id, tarefa_id, entradas,
+                              acoes) -> Entrega:
+    """Receita do CT-e contra custo de carta frete: agregado e piores casos.
+
+    A consulta devolve linhas mistas: uma linha 'total' com o agregado da janela
+    e N linhas 'pior_caso' de CT-e individual. As duas nunca se somam — a linha
+    total já cobre a janela inteira, inclusive os CT-es que não vieram no
+    detalhamento.
+    """
+    dias = int(entradas.get("dias", 30))
+    pr_margem_min = float(entradas.get("pr_margem_min", 5))
+    limite = int(entradas.get("limite", 100))
+    r = fb.rodar("atua", "controladoria.margem_por_cte",
+                 {"dias": dias, "pr_margem_min": pr_margem_min,
+                  "limite": limite,
+                  "cd_pessoa_filial": entradas.get("cd_pessoa_filial")},
+                 empresa_id=empresa_id, missao_id=missao_id,
+                 tarefa_id=tarefa_id, acoes_permitidas=acoes)
+    if not r.ok:
+        return Entrega("bloqueada", f"consulta indisponível: {r.erro}", {},
+                       pendencias=[r.erro or "falha na consulta de margem"])
+    linhas = r.dados["linhas"]
+    totais = [l for l in linhas if l.get("linha") == "total"]
+    piores = [l for l in linhas if l.get("linha") == "pior_caso"]
+    if not totais:
+        return Entrega("parcial", "a consulta não devolveu a linha de agregado",
+                       {"linhas_trazidas": len(linhas)},
+                       pendencias=["linha 'total' ausente: sem ela não há "
+                                   "margem do período para declarar"])
+    t = totais[0]
+
+    qt = int(t["qt_ctes"] or 0)
+    receita = _f(t["vl_receita"])
+    custo = _f(t["vl_custo"])
+    margem = _f(t["vl_margem"])
+    pr_margem = _f(t["pr_margem"]) / 100.0
+    qt_sem_carta = int(t["qt_sem_carta_frete"] or 0)
+    vl_sem_carta = _f(t["vl_sem_carta_frete"])
+    qt_negativa = int(t["qt_margem_negativa"] or 0)
+    vl_negativa = _f(t["vl_margem_negativa"])
+
+    # O corte por `limite` age sobre o detalhamento (a linha total ocupa uma
+    # posição). Se encheu, há mais CT-es ruins do que os listados — e a
+    # contagem confiável dos negativos continua sendo a do agregado.
+    truncado = len(linhas) >= limite
+
+    campos = ("nr_ctrc", "ds_serie", "dt_emissao", "cliente", "vl_receita",
+              "vl_custo", "vl_margem", "pr_margem", "cd_pessoa_filial")
+    resultado = {
+        "janela_dias": dias, "margem_minima_pct": pr_margem_min,
+        "ctes_com_custo_conhecido": qt,
+        "receita": round(receita, 2), "custo_carta_frete": round(custo, 2),
+        "margem_contribuicao": round(margem, 2),
+        "margem_contribuicao_pct": round(pr_margem, 4),
+        "ctes_sem_carta_frete": qt_sem_carta,
+        "receita_sem_carta_frete": round(vl_sem_carta, 2),
+        "ctes_custo_zero": int(t["qt_custo_zero"] or 0),
+        "ctes_margem_negativa": qt_negativa,
+        "valor_margem_negativa": round(vl_negativa, 2),
+        "piores_casos_trazidos": len(piores), "truncado": truncado,
+        "amostra": [_linha(l, campos) for l in piores[:15]],
+    }
+    evid = [_ev("consulta", "atua:controladoria.margem_por_cte", r.referencia,
+                f"{qt} CT-e(s) dos últimos {dias} dias com carta frete "
+                f"lançada: receita {brl(receita)}, custo {brl(custo)}, "
+                f"diferença {brl(margem)}; {qt_sem_carta} CT-e(s) sem carta "
+                f"frete ficaram fora do cálculo",
+                "atua:ctrc", r.dados["consultada_em"])]
+    afirm = [
+        {"texto": f"Nos últimos {dias} dias, os {qt} CT-e(s) com carta frete "
+                  f"lançada somaram {brl(receita)} de receita bruta contra "
+                  f"{brl(custo)} de carta frete, deixando {brl(margem)} — "
+                  f"{pct(pr_margem, 2)} de margem de contribuição de frete, que "
+                  f"não é lucro porque não desconta imposto, comissão nem "
+                  f"estrutura.",
+         "natureza": "indicio", "evidencia": 0},
+        {"texto": f"{qt_negativa} CT-e(s) do período ficaram com custo de carta "
+                  f"frete acima da própria receita, {brl(vl_negativa)} no "
+                  f"conjunto; são fila de investigação, porque parte disso é "
+                  f"custo de uma viagem inteira caindo em um CT-e só.",
+         "natureza": "indicio", "evidencia": 0},
+        {"texto": f"{qt_sem_carta} CT-e(s) do período, {brl(vl_sem_carta)} de "
+                  f"receita, não têm carta frete lançada e por isso ficaram "
+                  f"inteiramente fora do cálculo de margem.",
+         "natureza": "fato", "evidencia": 0},
+    ]
+
+    incert = [
+        "margem por CT-e é frágil quando uma viagem carrega vários CT-es: uma "
+        "carta frete alta contra CT-es pequenos joga todo o custo em cima de um "
+        "deles. A leitura confiável é o agregado; o pior caso é fila de "
+        "conferência, não conclusão",
+        "a receita usada é o valor bruto do CT-e, sem desconto de ICMS, "
+        "PIS/COFINS ou comissão — o que se apura aqui é margem de contribuição "
+        "de frete, não lucro",
+        "o único custo considerado é a carta frete: pedágio pago fora dela, "
+        "quebra, avaria, seguro e despesa de filial não entram",
+        f"os {qt_sem_carta} CT-es sem carta frete não são de graça — são frota "
+        f"própria, cujo custo está no caixa do veículo, ou carta ainda não "
+        f"lançada; tratá-los como margem cheia seria mentira, por isso ficaram "
+        f"fora do cálculo em vez de entrar como custo zero",
+        "CT-e com carta frete de valor zero entra no cálculo e é contado à "
+        "parte, para não se confundir com quem simplesmente não tem carta",
+    ]
+    if truncado:
+        incert.append(
+            f"o limite de {limite} linhas foi atingido: os {len(piores)} piores "
+            f"casos listados não são todos os CT-es abaixo de "
+            f"{pr_margem_min:.0f}% de margem — a contagem completa dos "
+            f"negativos é a do agregado ({qt_negativa})")
+
+    return Entrega(
+        "concluida",
+        f"Margem de contribuição de frete em {dias} dias: {pct(pr_margem, 2)} "
+        f"({brl(margem)} sobre {brl(receita)}), com {qt_negativa} CT-e(s) "
+        f"negativos.",
+        resultado, afirm, evid, incert, bruto={"linhas": linhas},
+    )
+
+
+def exec_frota_resultado(*, empresa_id, missao_id, tarefa_id, entradas,
+                         acoes) -> Entrega:
+    """Receita e custo identificável por placa da frota própria.
+
+    A receita nasce no cavalo: é ele que aparece no CT-e. Carreta, dolly e carro
+    administrativo entram só com custo, então comparar cavalo com carreta é
+    injusto por construção — os dois grupos são apurados separados aqui. E a
+    diferença entre receita e custo é contribuição, nunca lucro: falta
+    depreciação, IPVA, seguro e estrutura.
+    """
+    dias = int(entradas.get("dias", 90))
+    limite = int(entradas.get("limite", 100))
+    r = fb.rodar("atua", "frota.resultado_veiculo",
+                 {"dias": dias, "limite": limite,
+                  "cd_pessoa_filial": entradas.get("cd_pessoa_filial")},
+                 empresa_id=empresa_id, missao_id=missao_id,
+                 tarefa_id=tarefa_id, acoes_permitidas=acoes)
+    if not r.ok:
+        return Entrega("bloqueada", f"consulta indisponível: {r.erro}", {},
+                       pendencias=[r.erro or "falha na consulta de frota"])
+    linhas = r.dados["linhas"]
+
+    # A consulta ordena da pior contribuição para a melhor e corta em `limite`.
+    # Quando o corte age, o que ficou na mão é a ponta ruim da frota: chamar
+    # esses totais de resultado da frota seria falso.
+    truncado = len(linhas) >= limite
+
+    tratores = [l for l in linhas if l.get("id_tracao")]
+    apoio = [l for l in linhas if not l.get("id_tracao")]
+    rec_tr = sum(_f(l["vl_receita"]) for l in tratores)
+    cus_tr = sum(_f(l["vl_custo_identificavel"]) for l in tratores)
+    ctes_tr = sum(int(l["qt_ctes"] or 0) for l in tratores)
+    contrib_tr = rec_tr - cus_tr
+    negativos = [l for l in tratores if _f(l["vl_contribuicao"]) < 0]
+    cus_apoio = sum(_f(l["vl_custo_identificavel"]) for l in apoio)
+    apoio_sem_cte = [l for l in apoio if int(l["qt_ctes"] or 0) == 0]
+    carros = [l for l in apoio
+              if (l.get("nm_tipo_veiculo") or "").upper().startswith("CARRO")]
+    cus_carros = sum(_f(l["vl_custo_identificavel"]) for l in carros)
+
+    campos = ("ds_placa", "nr_frota", "ds_modelo", "nm_tipo_veiculo",
+              "id_tracao", "qt_ctes", "vl_receita", "vl_combustivel",
+              "vl_manutencao", "vl_pedagio", "vl_pessoal",
+              "vl_custo_identificavel", "vl_contribuicao", "pr_contribuicao",
+              "vl_km", "dt_ultimo_cte", "qt_lancamentos_caixa")
+    resultado = {
+        "janela_dias": dias,
+        "veiculos_trazidos": len(linhas), "truncado": truncado,
+        "tratores": len(tratores), "tratores_ctes": ctes_tr,
+        "tratores_receita": round(rec_tr, 2),
+        "tratores_custo_identificavel": round(cus_tr, 2),
+        "tratores_contribuicao": round(contrib_tr, 2),
+        "tratores_contribuicao_pct": (round(contrib_tr / rec_tr, 4)
+                                      if rec_tr else None),
+        "tratores_contribuicao_negativa": len(negativos),
+        "apoio_veiculos": len(apoio),
+        "apoio_custo_identificavel": round(cus_apoio, 2),
+        "apoio_sem_nenhum_cte": len(apoio_sem_cte),
+        "automoveis": len(carros), "automoveis_custo": round(cus_carros, 2),
+        # A consulta já vem da pior contribuição para a melhor.
+        "amostra": [_linha(l, campos) for l in tratores[:15]],
+    }
+    evid = [_ev("consulta", "atua:frota.resultado_veiculo", r.referencia,
+                f"{len(linhas)} veículo(s) próprios com movimento nos últimos "
+                f"{dias} dias, dos quais {len(tratores)} unidades tratoras com "
+                f"{ctes_tr} CT-e(s), receita {brl(rec_tr)} e custo lançado no "
+                f"caixa do veículo de {brl(cus_tr)}",
+                "atua:veiculo_proprio", r.dados["consultada_em"])]
+    afirm = [
+        {"texto": f"Nos últimos {dias} dias, as {len(tratores)} unidades "
+                  f"tratoras trazidas puxaram {ctes_tr} CT-e(s) de frota "
+                  f"própria, com {brl(rec_tr)} de receita e {brl(cus_tr)} de "
+                  f"custo lançado no caixa do veículo.",
+         "natureza": "fato", "evidencia": 0},
+        {"texto": f"A diferença entre essa receita e esse custo é de "
+                  f"{brl(contrib_tr)} de contribuição — que não é lucro: falta "
+                  f"depreciação, IPVA, seguro, estrutura e o salário de "
+                  f"motorista que não é lançado na placa.",
+         "natureza": "indicio", "evidencia": 0},
+    ]
+    if negativos:
+        pior = negativos[0]
+        afirm.append({
+            "texto": f"{len(negativos)} unidade(s) tratora(s) fecharam a janela "
+                     f"com custo acima da receita; a pior é a placa "
+                     f"{pior['ds_placa']}, com {int(pior['qt_ctes'] or 0)} "
+                     f"CT-e(s), {brl(_f(pior['vl_receita']))} de receita contra "
+                     f"{brl(_f(pior['vl_custo_identificavel']))} de custo no "
+                     f"caixa do veículo.",
+            "natureza": "indicio", "evidencia": 0})
+    if apoio:
+        afirm.append({
+            "texto": f"{len(apoio)} veículo(s) sem tração (carreta, dolly, "
+                     f"automóvel) consumiram {brl(cus_apoio)} no período, "
+                     f"sendo {brl(cus_carros)} em {len(carros)} automóvel(is). "
+                     f"Eles não recebem receita porque o CT-e é emitido no "
+                     f"cavalo, então esse valor não pode ser lido como "
+                     f"prejuízo do veículo.",
+            "natureza": "fato", "evidencia": 0})
+
+    incert = [
+        "não existe rateio de carreta neste ERP: a receita nasce no cavalo e a "
+        "carreta que carregou a carga aparece apenas como custo — comparar "
+        "cavalos entre si é justo, comparar cavalo com carreta não é",
+        "a diferença entre receita e custo é contribuição, não lucro: falta "
+        "depreciação, seguro de frota, IPVA, estrutura e o motorista quando o "
+        "salário não é lançado com o veículo",
+        "receita e custo estão em datas diferentes: a receita é a data de "
+        "emissão do CT-e e o custo é a data do documento no caixa, então nota "
+        "de manutenção lançada com atraso cai no período errado e derruba a "
+        "placa injustamente",
+        "veículo com custo e nenhum CT-e não é necessariamente ocioso: pode ser "
+        "carreta, carro administrativo ou cavalo parado em oficina",
+        "a carta frete emitida nos CT-es de frota própria é transferência "
+        "interna, contra a própria Pianetto, e por isso ficou fora do "
+        "resultado — somá-la ao combustível seria contar o mesmo custo duas "
+        "vezes",
+        "a abertura do custo por natureza (combustível, manutenção, pedágio, "
+        "pessoal) vem do texto do histórico do lançamento e serve de "
+        "orientação: as naturezas não fecham com o total, e foi o total do "
+        "caixa do veículo que entrou na conta",
+        "a frota própria é uma fração pequena do movimento: a Pianetto opera "
+        "essencialmente com terceiros, então este resultado não representa a "
+        "operação inteira",
+    ]
+    if truncado:
+        incert.append(
+            f"o limite de {limite} veículos foi atingido e a consulta ordena da "
+            f"pior contribuição para a melhor: os veículos de melhor resultado "
+            f"ficaram fora, então os totais acima valem para os {len(linhas)} "
+            f"trazidos e não para a frota inteira")
+
+    return Entrega(
+        "concluida",
+        f"Frota própria em {dias} dias: {len(tratores)} unidade(s) tratora(s) "
+        f"com {brl(rec_tr)} de receita e {brl(contrib_tr)} de contribuição, "
+        f"{len(negativos)} com custo acima da receita.",
+        resultado, afirm, evid, incert, bruto={"linhas": linhas},
+    )
+
+
+def exec_fiscal_cte_pendente(*, empresa_id, missao_id, tarefa_id, entradas,
+                             acoes) -> Entrega:
+    """Situação na SEFAZ de cada documento de transporte da janela.
+
+    Linhas mistas: 'resumo' traz uma linha por situação cobrindo a janela
+    inteira, 'pendente' traz o documento aberto, um por linha. Os totais saem
+    sempre do resumo — contar as linhas de detalhe daria o número do corte.
+    """
+    dias = int(entradas.get("dias", 90))
+    limite = int(entradas.get("limite", 200))
+    r = fb.rodar("atua", "fiscal.cte_pendente",
+                 {"dias": dias, "limite": limite,
+                  "cd_pessoa_filial": entradas.get("cd_pessoa_filial")},
+                 empresa_id=empresa_id, missao_id=missao_id,
+                 tarefa_id=tarefa_id, acoes_permitidas=acoes)
+    if not r.ok:
+        return Entrega("bloqueada", f"consulta indisponível: {r.erro}", {},
+                       pendencias=[r.erro or "falha na consulta fiscal"])
+    linhas = r.dados["linhas"]
+    resumo_l = [l for l in linhas if l.get("linha") == "resumo"]
+    pend_l = [l for l in linhas if l.get("linha") == "pendente"]
+
+    # A ordenação coloca o detalhe antes do resumo; num período muito sujo o
+    # corte por `limite` pode comer as linhas de resumo. Sem resumo não há
+    # totais da janela, e deduzi-los do detalhe truncado seria inventar número.
+    if not resumo_l:
+        return Entrega("parcial",
+                       "a consulta devolveu só o detalhe: o resumo por "
+                       "situação foi cortado pelo limite",
+                       {"pendentes_trazidos": len(pend_l), "truncado": True},
+                       pendencias=[f"repetir com limite acima de {limite} para "
+                                   f"obter o resumo por situação"])
+
+    por_situacao = {l["situacao"]: {"quantidade": int(l["qt"] or 0),
+                                   "valor": round(_f(l["vl"]), 2)}
+                    for l in resumo_l}
+    total_docs = sum(v["quantidade"] for v in por_situacao.values())
+    autorizados = por_situacao.get("autorizado", {}).get("quantidade", 0)
+
+    # O resumo conta também o que foi cancelado depois; a lista de detalhe já
+    # exclui cancelado. Por isso a contagem de pendências vem do detalhe.
+    abertos = len(pend_l)
+    vl_abertos = sum(_f(l["vl_total"]) for l in pend_l)
+    truncado = len(linhas) >= limite
+    por_classe: dict[str, int] = {}
+    for l in pend_l:
+        por_classe[l["situacao"]] = por_classe.get(l["situacao"], 0) + 1
+    parados = [l for l in pend_l if int(l.get("dias_parado") or 0) >= 15]
+
+    campos = ("situacao", "nr_ctrc", "ds_serie", "dt_emissao", "vl_total",
+              "cd_status", "ds_status", "cliente", "cd_pessoa_filial",
+              "dias_parado")
+    ordenada = sorted(pend_l, key=lambda l: -_f(l["vl_total"]))
+    resultado = {
+        "janela_dias": dias, "documentos_na_janela": total_docs,
+        "por_situacao": por_situacao,
+        "pendentes_abertos": abertos, "valor_pendentes": round(vl_abertos, 2),
+        "pendentes_por_classe": por_classe,
+        "pendentes_parados_15d_ou_mais": len(parados),
+        "linhas_trazidas": len(linhas), "truncado": truncado,
+        "amostra": [_linha(l, campos) for l in ordenada[:15]],
+    }
+    evid = [_ev("consulta", "atua:fiscal.cte_pendente", r.referencia,
+                f"{total_docs} documento(s) emitidos nos últimos {dias} dias "
+                f"classificados pelo código de retorno da SEFAZ: "
+                + ", ".join(f"{k} {v['quantidade']}"
+                            for k, v in sorted(por_situacao.items())),
+                "atua:ctrc_cte", r.dados["consultada_em"])]
+    afirm = [
+        {"texto": f"Dos {total_docs} documentos emitidos nos últimos {dias} "
+                  f"dias, {autorizados} estão autorizados pela SEFAZ no ERP.",
+         "natureza": "fato", "evidencia": 0},
+        {"texto": f"{abertos} documento(s) continuam sem autorização e não "
+                  f"foram cancelados, somando {brl(vl_abertos)}: "
+                  + ", ".join(f"{q} {c.replace('_', ' ')}"
+                              for c, q in sorted(por_classe.items(),
+                                                 key=lambda x: -x[1])) + ".",
+         "natureza": "fato", "evidencia": 0},
+    ]
+    if parados:
+        afirm.append({
+            "texto": f"{len(parados)} desses documentos estão parados há 15 "
+                     f"dias ou mais desde a emissão, o que torna improvável "
+                     f"que sejam rascunho em uso.",
+            "natureza": "indicio", "evidencia": 0})
+
+    incert = [
+        "'nunca transmitido' mistura duas coisas que o ERP não separa: "
+        "documento digitado e esquecido, e rascunho legítimo — o tempo parado é "
+        "o melhor separador prático",
+        "'sem retorno da SEFAZ' pode ser registro antigo, criado antes da "
+        "transmissão e nunca atualizado; a maior parte desses casos termina "
+        "cancelada, e o cancelado já está fora da lista",
+        "documento de modelo 55 é nota fiscal, não CT-e, e foi separado em "
+        "classe própria para não virar falso positivo; esse corte é decisão da "
+        "consulta e não marcação do ERP, então se a emissão mudar de modelo "
+        "esses documentos saem da vigilância sem aviso",
+        "o motivo mostrado é a descrição genérica do código no catálogo da "
+        "SEFAZ, não a mensagem recebida por aquele documento específico",
+        "nada aqui consultou a SEFAZ: a conferência é contra o banco do ERP, "
+        "então se o ERP perdeu um retorno a consulta repete o erro dele",
+        "o resumo por situação conta a janela inteira, inclusive o que foi "
+        "cancelado depois; a lista de pendências exclui cancelado, por isso os "
+        "dois números não fecham entre si, de propósito",
+    ]
+    if truncado:
+        incert.append(
+            f"o limite de {limite} linhas foi atingido: a lista de pendências "
+            f"trazida pode não ser toda; o resumo por situação continua sendo "
+            f"da janela inteira")
+
+    return Entrega(
+        "concluida",
+        f"{abertos} documento(s) sem autorização da SEFAZ em {dias} dias, "
+        f"{brl(vl_abertos)} em risco fiscal ({autorizados} autorizados).",
+        resultado, afirm, evid, incert, bruto={"linhas": linhas},
+    )
+
+
 # ===========================================================================
 # Cadastro
 # ===========================================================================
@@ -308,27 +1017,127 @@ registrar(Definicao(
     executor=exec_carteira_vencida,
 ))
 
+registrar(Definicao(
+    id="contas.pagar", nome="Íris", papel="Analista de Contas a Pagar",
+    area="Financeiro & Tesouraria",
+    promessa="Nada é pago duas vezes.", versao=1,
+    competencias=["duplicidade-a-pagar", "exposicao-de-fornecedor",
+                  "fila-de-conferencia"],
+    ferramentas=["atua"], acoes=["atua.pagar.duplicidade_suspeita"],
+    entradas={"dias": "int", "dias_retro": "int", "vl_min": "num",
+              "max_parcelas": "int", "cd_pessoa_filial": "int",
+              "limite": "int"},
+    saidas={"grupos": "int", "titulos": "int", "exposicao": "num",
+            "grupos_confianca_alta": "int",
+            "valor_ja_pago_confianca_alta": "num"},
+    limites={"tempo_s": 90, "custo_centavos": 0},
+    criterios=["exposição confere com valor × repetições",
+               "parcelamento longo fora da lista",
+               "nenhuma linha declarada como duplicidade provada"],
+    executor=exec_pagar_duplicidade,
+))
+
+registrar(Definicao(
+    id="comercial.faturamento", nome="Bruno", papel="Analista de Faturamento",
+    area="Comercial & Faturamento",
+    promessa="Todo frete entregue vira fatura.", versao=1,
+    competencias=["cte-sem-titulo", "backlog-de-faturamento"],
+    ferramentas=["atua"], acoes=["atua.faturamento.cte_sem_titulo"],
+    entradas={"dias": "int", "carencia_dias": "int",
+              "cd_pessoa_filial": "int", "limite": "int"},
+    saidas={"quantidade": "int", "valor": "num",
+            "trazidos_com_30_dias_ou_mais": "int"},
+    limites={"tempo_s": 90, "custo_centavos": 0},
+    criterios=["total vem da janela, não das linhas trazidas",
+               "só CT-e autorizado e não cancelado",
+               "carência declarada"],
+    executor=exec_faturamento_cte_sem_titulo,
+))
+
+registrar(Definicao(
+    id="comercial.inteligencia", nome="Sofia", papel="Inteligência Comercial",
+    area="Comercial & Faturamento",
+    promessa="Você sabe exatamente de quem depende.", versao=1,
+    competencias=["queda-de-cliente", "concentracao-de-receita"],
+    ferramentas=["atua"], acoes=["atua.comercial.cliente_que_sumiu"],
+    entradas={"dias_base": "int", "dias_recente": "int", "meses_min": "int",
+              "vl_mensal_min": "num", "pr_queda_min": "num",
+              "cd_pessoa_filial": "int", "limite": "int"},
+    saidas={"clientes": "int", "pararam": "int", "cairam": "int",
+            "perda_mensal": "num", "perda_mensal_sem_o_maior": "num"},
+    limites={"tempo_s": 90, "custo_centavos": 0},
+    criterios=["quem parou separado de quem caiu",
+               "efeito de um cliente só isolado do total",
+               "sazonalidade declarada"],
+    executor=exec_comercial_cliente_sumiu,
+))
+
+registrar(Definicao(
+    id="controladoria.margem", nome="Caio", papel="Controller",
+    area="Controladoria & Custos",
+    promessa="A margem que existe atrás de cada conhecimento.", versao=1,
+    competencias=["margem-por-cte", "custo-de-carta-frete",
+                  "cte-com-margem-negativa"],
+    ferramentas=["atua"], acoes=["atua.controladoria.margem_por_cte"],
+    entradas={"dias": "int", "pr_margem_min": "num",
+              "cd_pessoa_filial": "int", "limite": "int"},
+    saidas={"receita": "num", "custo_carta_frete": "num",
+            "margem_contribuicao": "num", "margem_contribuicao_pct": "num",
+            "ctes_margem_negativa": "int", "ctes_sem_carta_frete": "int"},
+    limites={"tempo_s": 120, "custo_centavos": 0},
+    criterios=["agregado não soma com detalhe",
+               "CT-e sem carta frete fora do cálculo",
+               "resultado tratado como contribuição, nunca como lucro"],
+    executor=exec_controladoria_margem,
+))
+
+registrar(Definicao(
+    id="frota.resultado", nome="Davi", papel="Analista de Frota",
+    area="Operações & Frota",
+    promessa="O veículo que dá prejuízo não passa despercebido.", versao=1,
+    competencias=["resultado-por-placa", "custo-de-veiculo",
+                  "frota-administrativa"],
+    ferramentas=["atua"], acoes=["atua.frota.resultado_veiculo"],
+    entradas={"dias": "int", "cd_pessoa_filial": "int", "limite": "int"},
+    saidas={"tratores": "int", "tratores_receita": "num",
+            "tratores_custo_identificavel": "num",
+            "tratores_contribuicao": "num",
+            "tratores_contribuicao_negativa": "int",
+            "apoio_custo_identificavel": "num"},
+    limites={"tempo_s": 120, "custo_centavos": 0},
+    criterios=["unidade tratora apurada separada de carreta e automóvel",
+               "carta frete interna fora do resultado",
+               "contribuição nunca apresentada como lucro"],
+    executor=exec_frota_resultado,
+))
+
+registrar(Definicao(
+    id="fiscal.documento", nome="Alan", papel="Analista Fiscal",
+    area="Fiscal & Contábil",
+    promessa="CT-e e MDF-e sem pendência com o fisco.", versao=1,
+    competencias=["situacao-sefaz", "cte-nao-transmitido", "rejeicao-sefaz"],
+    ferramentas=["atua"], acoes=["atua.fiscal.cte_pendente"],
+    entradas={"dias": "int", "cd_pessoa_filial": "int", "limite": "int"},
+    saidas={"documentos_na_janela": "int", "por_situacao": "dict",
+            "pendentes_abertos": "int", "valor_pendentes": "num",
+            "pendentes_parados_15d_ou_mais": "int"},
+    limites={"tempo_s": 90, "custo_centavos": 0},
+    criterios=["resumo por situação separado do detalhe",
+               "cancelado fora da lista de pendência",
+               "nota fiscal modelo 55 fora da cobrança de CT-e"],
+    executor=exec_fiscal_cte_pendente,
+))
+
 # Declarados, sem ferramenta ligada. Aparecem na interface com a limitação
-# escrita — é o teste de aceitação nº 15.
+# escrita — é o teste de aceitação nº 15. Continuam aqui de propósito: são o
+# mapa do que ainda falta ligar.
 for _id, _nome, _papel, _area, _prom, _fer in [
-    ("contas.pagar", "Íris", "Analista de Contas a Pagar",
-     "Financeiro & Tesouraria", "Nada é pago duas vezes.", ["atua"]),
-    ("controladoria.margem", "Caio", "Controller", "Controladoria & Custos",
-     "A margem que existe atrás de cada conhecimento.", ["atua"]),
     ("auditoria.interna", "Lívia", "Auditora Interna", "Controladoria & Custos",
      "O erro aparece no mesmo dia, não no fechamento.", ["atua", "documento"]),
-    ("comercial.faturamento", "Bruno", "Analista de Faturamento",
-     "Comercial & Faturamento", "Todo frete entregue vira fatura.", ["atua"]),
-    ("comercial.inteligencia", "Sofia", "Inteligência Comercial",
-     "Comercial & Faturamento", "Você sabe exatamente de quem depende.", ["atua"]),
-    ("frota.resultado", "Davi", "Analista de Frota", "Operações & Frota",
-     "O veículo que dá prejuízo não passa despercebido.", ["atua"]),
     ("frota.viagem", "Nina", "Analista de Viagem", "Operações & Frota",
      "Adiantamento, saldo e acerto sempre batendo.", ["atua"]),
     ("frota.combustivel", "Rui", "Analista de Combustível", "Operações & Frota",
      "Cada litro tem dono e tem destino.", ["x7bank"]),
-    ("fiscal.documento", "Alan", "Analista Fiscal", "Fiscal & Contábil",
-     "CT-e e MDF-e sem pendência com o fisco.", ["atua"]),
     ("fiscal.tributos", "Téo", "Analista Tributário", "Fiscal & Contábil",
      "Nenhum crédito tributário fica na mesa.", ["atua", "documento"]),
     ("gente.jornada", "Paula", "Analista de Jornada", "Gente & Conformidade",

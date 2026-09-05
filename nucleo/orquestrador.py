@@ -18,6 +18,47 @@ from . import bd, estados, limites, validacao
 # ===========================================================================
 # 1. Interpretação — objetivo em texto vira intenção verificável
 # ===========================================================================
+
+# Missões abertas pelo agendador e pela sentinela já sabem qual agente querem.
+# Confiar no regex nesse caso seria trocar uma certeza por uma adivinhação:
+# "duplicidade de pagamento" bate em `pagar`, que ia parar no agente errado.
+POR_AGENTE = {
+    "contas.pagar": [
+        ("contagem_confere", {"chave": "grupos"}),
+        ("toda_afirmacao_tem_evidencia", {})],
+    "comercial.faturamento": [
+        ("contagem_confere", {"chave": "quantidade"}),
+        ("toda_afirmacao_tem_evidencia", {})],
+    "comercial.inteligencia": [
+        ("contagem_confere", {"chave": "quantidade"}),
+        ("toda_afirmacao_tem_evidencia", {})],
+    "controladoria.margem": [
+        ("toda_afirmacao_tem_evidencia", {})],
+    "frota.resultado": [
+        ("contagem_confere", {"chave": "tratores",
+                              "onde": {"id_tracao": True}}),
+        ("toda_afirmacao_tem_evidencia", {})],
+    "fiscal.documento": [
+        ("contagem_confere", {"chave": "pendentes_abertos",
+                              "onde": {"linha": "pendente"}}),
+        ("toda_afirmacao_tem_evidencia", {})],
+    "cobranca.carteira": [
+        ("soma_confere", {"campo": "vl_saldo", "chave": "total"}),
+        ("contagem_confere", {"chave": "quantidade"}),
+        ("toda_afirmacao_tem_evidencia", {}), ("artefato_existe", {})],
+}
+
+# Fallback para objetivo digitado por gente. Vem ANTES dos padrões genéricos
+# porque "duplicidade de pagamento" contém "pagar".
+PADROES_NOVOS = [
+    (r"duplicidad|pago em dobro|pagamento duplicad", "contas.pagar"),
+    (r"sem t[ií]tulo|n[aã]o faturad|frete n[aã]o cobrad|cte sem", "comercial.faturamento"),
+    (r"cliente que sumiu|cliente parou|perda de cliente|queda de cliente", "comercial.inteligencia"),
+    (r"margem|rentabilidad|resultado por cte", "controladoria.margem"),
+    (r"ve[ií]culo|placa|frota|cavalo|carreta", "frota.resultado"),
+    (r"cte pendent|sefaz|denegad|rejeitad|n[aã]o transmitid", "fiscal.documento"),
+]
+
 PADROES = [
     # (regex, agente, montador de entradas, critérios objetivos)
     (r"concilia|extrato|ofx|banco|caixa", "tesouraria.conciliador",
@@ -92,6 +133,22 @@ def interpretar(objetivo: str, contexto: dict) -> dict | None:
     Não sabe fazer é uma resposta legítima. É melhor que inventar um plano.
     """
     alvo = objetivo.lower()
+
+    # Quem abriu a missão pode dizer de quem ela é. Isso vale mais que texto.
+    pedido = (contexto or {}).get("agente_id")
+    if pedido and pedido in POR_AGENTE:
+        return {"agente_id": pedido,
+                "entradas": {k: v for k, v in (contexto or {}).items()
+                             if k not in ("agente_id", "chave")},
+                "criterios": POR_AGENTE[pedido]}
+
+    for rx, agente_id in PADROES_NOVOS:
+        if re.search(rx, alvo):
+            return {"agente_id": agente_id,
+                    "entradas": {k: v for k, v in (contexto or {}).items()
+                                 if k not in ("agente_id", "chave")},
+                    "criterios": POR_AGENTE[agente_id]}
+
     for rx, agente_id, montador, criterios in PADROES:
         if re.search(rx, alvo):
             return {"agente_id": agente_id,

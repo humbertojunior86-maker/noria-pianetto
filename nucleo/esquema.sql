@@ -396,3 +396,13 @@ CREATE TABLE IF NOT EXISTS evento (
   criado_em     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_evento_emp ON evento(empresa_id, id DESC);
+
+-- ------------------------------------------------------------------ marcador
+-- Memória curta da sentinela: guarda a última leitura de um indicador para que
+-- a próxima possa dizer o que MUDOU. Sem isso a vigilância repete o mesmo
+-- número de hora em hora e vira ruído em vez de sinal.
+CREATE TABLE IF NOT EXISTS marcador (
+  chave         TEXT PRIMARY KEY,
+  valor         TEXT NOT NULL,        -- json
+  atualizado_em TEXT NOT NULL
+);
