@@ -2085,3 +2085,155 @@ body.modo-saguao {
   display: block; font-size: var(--t-micro); color: var(--tinta-4);
   text-transform: none; letter-spacing: 0;
 }
+
+/* --------------------------------------------- plano por veículo (CEO) --- */
+/* O bloco que vira ordem do dia: cada placa com sintoma, medida e dono. Fica
+   com a mesma moldura da contraprova porque cumpre o mesmo papel — número na
+   tela com a dúvida do auditor grudada nele. */
+.ceo-plano {
+  margin-top: var(--e-4);
+  padding: var(--e-4);
+  border: 1px solid var(--linha-2);
+  border-radius: var(--raio-md);
+  background: var(--painel-fundo);
+}
+.ceo-plano.diverge { border-color: var(--erro); }
+.ceo-plano.falha { color: var(--tinta-3); }
+.ceo-plano h4 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: var(--t-md);
+  color: var(--tinta);
+}
+.ceo-plano-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--e-2);
+}
+.ceo-plano-quem {
+  font-size: var(--t-mini);
+  color: var(--tinta-4);
+}
+.ceo-plano-nums {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--e-3);
+  margin-top: var(--e-3);
+}
+.ceo-plano-num { display: flex; flex-direction: column; gap: 2px; }
+.ceo-plano-num .rot {
+  font-size: var(--t-micro);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--tinta-4);
+}
+.ceo-plano-num b {
+  font-family: var(--mono);
+  font-size: var(--t-lg);
+  color: var(--tinta);
+}
+.ceo-plano-num .apoio { font-size: var(--t-mini); color: var(--tinta-3); }
+.ceo-plano-frase {
+  margin: var(--e-3) 0 0;
+  font-size: var(--t-peq);
+  color: var(--tinta-2);
+}
+.ceo-plano-duvida {
+  margin-top: var(--e-3);
+  padding: var(--e-3);
+  border-left: 2px solid var(--erro);
+  border-radius: var(--raio-min);
+  background: var(--erro-fundo);
+}
+.ceo-plano-duvida.ok {
+  border-left-color: var(--ok);
+  background: var(--ok-fundo);
+}
+.ceo-plano-duvida p {
+  margin: var(--e-2) 0 4px;
+  font-size: var(--t-peq);
+  color: var(--tinta-2);
+}
+.ceo-placas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--e-3);
+  margin-top: var(--e-4);
+}
+.ceo-placa {
+  padding: var(--e-3);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-min);
+  background: var(--painel);
+}
+.ceo-placa.vermelho { border-left: 2px solid var(--erro); }
+.ceo-placa-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--e-2);
+}
+.ceo-placa-topo .mono {
+  font-family: var(--mono);
+  font-size: var(--t-base);
+  color: var(--tinta);
+}
+.ceo-placa-topo .modelo { font-size: var(--t-mini); color: var(--tinta-4); }
+.ceo-placa-topo .contrib {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: var(--t-peq);
+  color: var(--tinta-2);
+}
+.ceo-placa.vermelho .contrib { color: var(--erro); }
+.ceo-placa-topo .confianca {
+  padding: 1px 6px;
+  border: 1px solid var(--linha-2);
+  border-radius: var(--raio-total);
+  font-size: var(--t-micro);
+  color: var(--tinta-4);
+}
+.ceo-placa-topo .confianca.baixa { color: var(--atencao); border-color: var(--atencao); }
+.ceo-placa-nums {
+  margin-top: var(--e-2);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--tinta-3);
+}
+.ceo-sintomas, .ceo-medidas { margin: var(--e-2) 0 0; padding-left: var(--e-3); }
+.ceo-sintomas li {
+  font-size: var(--t-mini);
+  color: var(--tinta-3);
+  margin-bottom: 2px;
+}
+.ceo-medidas { list-style: none; padding-left: 0; }
+.ceo-medidas li {
+  margin-top: var(--e-2);
+  padding-top: var(--e-2);
+  border-top: 1px solid var(--linha);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ceo-medidas .acao { font-size: var(--t-peq); color: var(--tinta); }
+.ceo-medidas .porque { font-size: var(--t-mini); color: var(--tinta-3); }
+.ceo-medidas .quem {
+  display: flex;
+  gap: var(--e-2);
+  align-items: baseline;
+  font-size: var(--t-micro);
+}
+.ceo-medidas .quem b {
+  color: var(--acento);
+  font-weight: var(--peso-forte);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.ceo-medidas .ganho { font-family: var(--mono); color: var(--ok); }
+.ceo-plano-limpas {
+  margin: var(--e-3) 0 0;
+  font-size: var(--t-mini);
+  color: var(--tinta-4);
+}

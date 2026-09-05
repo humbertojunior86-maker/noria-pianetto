@@ -453,6 +453,65 @@ SELECT f.cd_veiculo, f.ds_placa, f.nr_frota, f.ds_modelo, f.nm_tipo_veiculo, f.i
         ["dias", "cd_pessoa_filial", "limite"], False,
         "receita e custo identificavel por placa da frota propria no periodo"),
 
+    "contraprova.km_por_hodometro": (
+        """\
+-- contraprova.km_por_hodometro
+-- O quilometro por OUTRA porta. O plano por veiculo se apoia em
+-- ctrc.vl_km_rodado: distancia declarada no conhecimento. Aqui a distancia vem
+-- do hodometro lido no abastecimento (caixa_veiculo.vl_medidor), que e leitura
+-- de painel, nao declaracao de documento.
+-- Duas coisas aparecem quando os dois numeros divergem:
+--   . hodometro >> CT-e  -> o veiculo rodou sem conhecimento emitido nele
+--   . hodometro << CT-e  -> quilometragem declarada acima do que o painel andou
+-- Troca de painel zera o medidor e produz salto absurdo; a coluna
+-- id_salto marca isso em vez de esconder.
+WITH leit AS (
+  SELECT cv.cd_veiculo, k.dt_documento::date AS d, cv.vl_medidor AS m
+    FROM caixa_veiculo cv
+    JOIN caixa k ON k.cd_caixa = cv.cd_caixa
+   WHERE cv.vl_medidor > 0
+     AND k.dt_documento BETWEEN CURRENT_DATE - %(dias)s AND CURRENT_DATE
+)
+, outro AS (
+  -- O MESMO veiculo emitindo conhecimento como agregado ou terceiro. A
+  -- apuracao de frota propria filtra id_proprietario_veiculo = 1 e nao ve
+  -- isto; e a explicacao mais provavel para painel que anda sem CT-e.
+  SELECT c.cd_veiculo,
+         count(*) AS qt_ctes_outro,
+         sum(c.vl_total) AS vl_receita_outro,
+         sum(COALESCE(c.vl_km_rodado, 0)) AS km_outro,
+         string_agg(DISTINCT c.id_proprietario_veiculo::text, ',') AS ds_proprietarios
+    FROM ctrc c
+   WHERE c.dt_cancelamento IS NULL
+     AND c.dt_emissao >= CURRENT_DATE - %(dias)s
+     AND c.id_proprietario_veiculo <> 1
+     AND c.cd_veiculo IS NOT NULL
+   GROUP BY 1
+)
+SELECT v.cd_veiculo, btrim(v.ds_placa) AS ds_placa, v.ds_modelo,
+       count(*)        AS qt_leituras,
+       min(l.m)        AS km_inicial,
+       max(l.m)        AS km_final,
+       (max(l.m) - min(l.m)) AS km_hodometro,
+       min(l.d)        AS primeira_leitura,
+       max(l.d)        AS ultima_leitura,
+       ((max(l.m) - min(l.m)) > %(dias)s * 900) AS id_salto,
+       COALESCE(o.qt_ctes_outro, 0)    AS qt_ctes_outro,
+       COALESCE(o.vl_receita_outro, 0) AS vl_receita_outro,
+       COALESCE(o.km_outro, 0)         AS km_outro,
+       o.ds_proprietarios
+  FROM leit l
+  JOIN veiculo v ON v.cd_veiculo = l.cd_veiculo
+  LEFT JOIN outro o ON o.cd_veiculo = l.cd_veiculo
+ GROUP BY 1, 2, 3, o.qt_ctes_outro, o.vl_receita_outro, o.km_outro,
+          o.ds_proprietarios
+HAVING count(*) >= 2
+ ORDER BY (max(l.m) - min(l.m)) DESC
+ LIMIT %(limite)s""",
+        ["dias", "limite"], False,
+        "quilometragem pelo hodometro do abastecimento e conhecimento "
+        "emitido na mesma placa fora da frota propria"),
+
     "lucratividade.por_setor": (
         """\
 -- lucratividade.por_setor
@@ -1054,6 +1113,7 @@ PADROES: dict[str, dict] = {
     "lucratividade.por_agencia": {"dias": 90, "cd_pessoa_filial": None,
                                   "limite": 60},
     "contraprova.lucratividade_custo_frota": {"dias": 90},
+    "contraprova.km_por_hodometro": {"dias": 90, "limite": 300},
     # contraprovas: mesmos padroes das consultas que elas contestam, para que a
     # comparacao seja de fato sobre o mesmo universo.
     "contraprova.cte_sem_titulo_situacao": {"dias": 30, "carencia_dias": 0,

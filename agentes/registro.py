@@ -8,6 +8,7 @@ como 'sem_integracao' e diz qual é a limitação — nunca finge que opera.
 from __future__ import annotations
 
 import json
+from datetime import date as _date
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Callable
@@ -47,6 +48,10 @@ class Definicao:
     saidas: dict
     limites: dict
     criterios: list[str]
+    # Um agente pode ter mais de uma frente e cada frente devolve outra coisa.
+    # Sem isto, o verificador estrutural cobra da apuração por placa os campos
+    # da apuração por conhecimento e reprova uma entrega correta.
+    saidas_foco: dict[str, dict] = field(default_factory=dict)
     executor: Callable[..., Entrega] | None = None
     # Contraprova: recalcula o número de OUTRO agente por um caminho diferente
     # do banco. Recebe `alvo` (a entrega que está sendo contestada) além dos
@@ -292,6 +297,21 @@ def _f(v) -> float:
         return float(v or 0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def f_num(v, casas: int = 0) -> str:
+    """Número solto em pt-BR: milhar com ponto, decimal com vírgula."""
+    try:
+        n = float(v or 0)
+    except (TypeError, ValueError):
+        return "0"
+    s = f"{n:,.{casas}f}".replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+    return s
+
+
+def f_reais_km(v) -> str:
+    """Preço por quilômetro. Duas casas, sempre com o R$ na frente."""
+    return brl(v)
 
 
 def _linha(l: dict, campos: tuple[str, ...]) -> dict:
@@ -733,6 +753,25 @@ def exec_controladoria_margem(*, empresa_id, missao_id, tarefa_id, entradas,
         resultado, afirm, evid, incert, bruto={"linhas": linhas},
     )
 
+
+
+def exec_controladoria(*, empresa_id, missao_id, tarefa_id, entradas,
+                       acoes) -> Entrega:
+    """Porta de entrada do Caio. Ele tem duas frentes, não duas identidades.
+
+    Sem `foco`, apura margem por conhecimento — o que sempre fez. Com
+    `foco=veiculo`, desce ao nível da placa e volta com o que fazer em cada
+    uma. É a mesma pessoa olhando o mesmo custo por dois recortes, e por isso
+    fica no mesmo agente em vez de virar um agente novo sem histórico.
+    """
+    if str(entradas.get("foco") or "").lower() in ("veiculo", "veiculos",
+                                                   "placa"):
+        return exec_plano_por_veiculo(
+            empresa_id=empresa_id, missao_id=missao_id, tarefa_id=tarefa_id,
+            entradas=entradas, acoes=acoes)
+    return exec_controladoria_margem(
+        empresa_id=empresa_id, missao_id=missao_id, tarefa_id=tarefa_id,
+        entradas=entradas, acoes=acoes)
 
 
 def exec_lucratividade_setor(*, empresa_id, missao_id, tarefa_id, entradas,
@@ -1206,6 +1245,278 @@ def exec_fiscal_cte_pendente(*, empresa_id, missao_id, tarefa_id, entradas,
     )
 
 
+def _mediana(vals: list[float]) -> float:
+    v = sorted(x for x in vals if x > 0)
+    if not v:
+        return 0.0
+    m = len(v) // 2
+    return v[m] if len(v) % 2 else (v[m - 1] + v[m]) / 2.0
+
+
+def exec_plano_por_veiculo(*, empresa_id, missao_id, tarefa_id, entradas,
+                           acoes) -> Entrega:
+    """Diagnóstico placa a placa e o que fazer para tirar cada uma do vermelho.
+
+    O resultado por veículo diz QUEM está no vermelho. Isso sozinho não muda
+    nada: o que muda é saber POR QUE, e a resposta é sempre uma de poucas —
+    o veículo rodou pouco, o frete dele foi barato, o combustível lançado nele
+    foi caro ou a manutenção comeu o mês. Cada placa é comparada com a mediana
+    dos próprios cavalos da casa, não com número de fora, e o ganho estimado é
+    sempre 'trazer para a mediana', nunca 'para o melhor da frota'.
+
+    Duas regras de honestidade ficam no código, não no texto:
+    - a receita é a do CT-e no período e o custo é o do caixa no mesmo período;
+      um veículo que rodou em junho e teve a nota de manutenção lançada em
+      agosto aparece pior do que é, então baixo quilômetro derruba a confiança
+      do diagnóstico em vez de virar acusação;
+    - combustível por quilômetro aqui é REAIS LANÇADOS por quilômetro, não
+      consumo aferido na bomba. Serve para escolher onde medir, não para
+      afirmar que o motorista gastou demais.
+    """
+    dias = int(entradas.get("dias", 90))
+    limite = int(entradas.get("limite", 300))
+    r = fb.rodar("atua", "frota.resultado_veiculo",
+                 {"dias": dias, "limite": limite,
+                  "cd_pessoa_filial": entradas.get("cd_pessoa_filial")},
+                 empresa_id=empresa_id, missao_id=missao_id,
+                 tarefa_id=tarefa_id, acoes_permitidas=acoes)
+    if not r.ok:
+        return Entrega("bloqueada", f"consulta indisponível: {r.erro}", {},
+                       pendencias=[r.erro or "falha na consulta de frota"])
+    linhas = r.dados["linhas"]
+    frota = [l for l in linhas
+             if l.get("id_tracao") and int(l["qt_ctes"] or 0) > 0]
+    if not frota:
+        return Entrega(
+            "parcial", f"nenhum cavalo da frota própria emitiu CT-e em {dias} "
+            f"dias — sem base para plano por veículo", {"veiculos": 0},
+            pendencias=["nenhum veículo de tração com receita no período"])
+
+    # Referência da casa. Quem quase não rodou distorce mediana de consumo,
+    # então o consumo é medido só entre os que rodaram de verdade.
+    KM_DIA_MIN = 50.0
+    for l in frota:
+        km = _f(l["vl_km"])
+        l["_km"] = km
+        l["_km_dia"] = km / dias if dias else 0.0
+        l["_rec"] = _f(l["vl_receita"])
+        l["_cus"] = _f(l["vl_custo_identificavel"])
+        l["_contrib"] = l["_rec"] - l["_cus"]
+        l["_r_km"] = l["_rec"] / km if km else 0.0
+        l["_comb_km"] = _f(l["vl_combustivel"]) / km if km else 0.0
+        l["_manut"] = _f(l["vl_manutencao"])
+    rodando = [l for l in frota if l["_km_dia"] >= KM_DIA_MIN]
+    med_km_dia = _mediana([l["_km_dia"] for l in frota])
+    med_r_km = _mediana([l["_r_km"] for l in frota])
+    med_comb_km = _mediana([l["_comb_km"] for l in rodando]) if rodando else 0.0
+    med_manut = _mediana([l["_manut"] for l in frota])
+
+    hoje = _date.today()
+    plano: list[dict] = []
+    for l in sorted(frota, key=lambda x: x["_contrib"]):
+        sint: list[str] = []
+        med: list[dict] = []
+        ganho = 0.0      # preço e consumo: diferença medida contra a mediana
+        giro = 0.0       # agenda cheia: estimativa, e por isso somada à parte
+        km, km_dia = l["_km"], l["_km_dia"]
+        parado = None
+        try:
+            ult = l.get("dt_ultimo_cte")
+            if ult:
+                d = ult if hasattr(ult, "year") else _date.fromisoformat(str(ult)[:10])
+                parado = (hoje - d).days
+        except (TypeError, ValueError):
+            parado = None
+
+        # 1. Quilômetro. É o sintoma que manda: cavalo parado não tem frete
+        # bom nem consumo bom, tem custo correndo sozinho.
+        if med_km_dia and km_dia < med_km_dia * 0.6:
+            falta = (med_km_dia - km_dia) * dias
+            giro = falta * max(l["_r_km"], med_r_km) * 0.15
+            sint.append(
+                f"rodou {f_num(km)} km em {dias} dias, {f_num(km_dia, 1)} km por "
+                f"dia, contra {f_num(med_km_dia, 1)} km por dia da mediana da "
+                f"frota — faltaram {f_num(falta)} km de giro")
+            med.append({
+                "acao": "cobrar programação de carga para esta placa na "
+                        "reunião diária da operação, e se não houver carga na "
+                        "praça dela, transferir o cavalo para a filial que "
+                        "está terceirizando frete",
+                "porque": f"esta placa girou {f_num(km_dia, 1)} km/dia e a "
+                          f"mediana da casa é {f_num(med_km_dia, 1)} km/dia; "
+                          f"parcela grande do custo do veículo corre com ele "
+                          f"parado",
+                "ganho": (round(giro, 2) if giro else None),
+                "quem": "Operações & Frota"})
+        if parado is not None and parado > 21:
+            sint.append(f"último CT-e foi há {parado} dias")
+            med.append({
+                "acao": "abrir chamado escrito dizendo onde o veículo está e "
+                        "por quê: oficina, motorista afastado, documento "
+                        "vencido ou falta de carga. Sem essa resposta em 48h, "
+                        "o veículo entra na pauta de venda ou locação",
+                "porque": f"{parado} dias sem emitir conhecimento é tempo "
+                          f"demais para um cavalo com custo lançado",
+                "ganho": None, "quem": "Operações & Frota"})
+
+        # 2. Preço do frete. Só faz sentido comparar quem rodou.
+        if km_dia >= KM_DIA_MIN and med_r_km and l["_r_km"] < med_r_km * 0.9:
+            g = (med_r_km - l["_r_km"]) * km
+            ganho += g
+            sint.append(
+                f"o frete dela saiu a {f_reais_km(l['_r_km'])} por km contra "
+                f"{f_reais_km(med_r_km)} por km da mediana")
+            med.append({
+                "acao": f"repactuar as rotas desta placa com piso de "
+                        f"{f_reais_km(med_r_km)} por km, ou trocar a rota dela "
+                        f"pela rota de um cavalo que hoje roda acima da "
+                        f"mediana",
+                "porque": f"nos {f_num(km)} km rodados, a diferença de preço "
+                          f"para a mediana da própria frota vale {brl(g)}",
+                "ganho": round(g, 2), "quem": "Comercial"})
+
+        # 3. Combustível lançado por quilômetro.
+        if km_dia >= KM_DIA_MIN and med_comb_km and l["_comb_km"] > med_comb_km * 1.2:
+            g = (l["_comb_km"] - med_comb_km) * km
+            ganho += g
+            sint.append(
+                f"combustível lançado a {f_reais_km(l['_comb_km'])} por km "
+                f"contra {f_reais_km(med_comb_km)} por km da mediana")
+            med.append({
+                "acao": "conferir os abastecimentos desta placa um a um no "
+                        "período: hodômetro informado, litragem contra "
+                        "capacidade do tanque e abastecimento fora da rota. "
+                        "Fechar a média km/l do veículo com o motorista",
+                "porque": f"são {brl(g)} acima do que a mediana da frota "
+                          f"gastaria nos mesmos {f_num(km)} km — pode ser "
+                          f"consumo, pode ser lançamento de outra placa caindo "
+                          f"nesta, e as duas coisas se resolvem olhando",
+                "ganho": round(g, 2), "quem": "Controladoria & Custos"})
+
+        # 4. Manutenção. Aqui não existe mediana por km confiável: nota grande
+        # cai num mês só. O corte é o valor absoluto contra a mediana da casa.
+        if med_manut and l["_manut"] > max(med_manut * 2.5, 20000.0):
+            sint.append(f"manutenção de {brl(l['_manut'])} no período, "
+                        f"{f_num(l['_manut'] / med_manut)} vezes a mediana da "
+                        f"frota ({brl(med_manut)})")
+            med.append({
+                "acao": "levantar o histórico de oficina dos últimos 12 meses "
+                        "desta placa e comparar o custo acumulado com a tabela "
+                        "de mercado do modelo. Se passar de metade do valor do "
+                        "veículo, decidir entre retífica e troca — com data",
+                "porque": f"{brl(l['_manut'])} em {dias} dias é gasto de "
+                          f"veículo em fim de ciclo, não de manutenção "
+                          f"preventiva",
+                "ganho": None, "quem": "Operações & Frota"})
+
+        if not med:
+            continue
+        confianca = ("baixa" if km_dia < KM_DIA_MIN else
+                     "media" if int(l["qt_ctes"] or 0) < 5 else "alta")
+        plano.append({
+            "placa": l["ds_placa"], "modelo": l.get("ds_modelo"),
+            "ctes": int(l["qt_ctes"] or 0),
+            "km": round(km, 0), "km_dia": round(km_dia, 1),
+            "receita": round(l["_rec"], 2), "custo": round(l["_cus"], 2),
+            "contribuicao": round(l["_contrib"], 2),
+            "contribuicao_pct": (round(l["_contrib"] / l["_rec"], 4)
+                                 if l["_rec"] else None),
+            "receita_por_km": round(l["_r_km"], 2),
+            "combustivel_por_km": round(l["_comb_km"], 2),
+            "manutencao": round(l["_manut"], 2),
+            "dias_sem_cte": parado,
+            "no_vermelho": l["_contrib"] < 0,
+            "confianca": confianca,
+            "sintomas": sint, "medidas": med,
+            "ganho_estimado": round(ganho, 2) if ganho else None,
+            "ganho_giro": round(giro, 2) if giro else None})
+
+    negativos = [p for p in plano if p["no_vermelho"]]
+    vermelho_total = sum(p["contribuicao"] for p in negativos)
+    ganho_total = sum(p["ganho_estimado"] or 0 for p in plano)
+    giro_total = sum(p["ganho_giro"] or 0 for p in plano)
+    limpos = [l["ds_placa"] for l in frota
+              if l["ds_placa"] not in {p["placa"] for p in plano}]
+
+    campos = ("ds_placa", "ds_modelo", "qt_ctes", "vl_receita",
+              "vl_custo_identificavel", "vl_contribuicao", "vl_km")
+    resultado = {
+        "janela_dias": dias,
+        "veiculos_analisados": len(frota),
+        "veiculos_com_apontamento": len(plano),
+        "veiculos_no_vermelho": len(negativos),
+        "vermelho_total": round(vermelho_total, 2),
+        "ganho_estimado_total": round(ganho_total, 2),
+        "ganho_giro_total": round(giro_total, 2),
+        "mediana_km_dia": round(med_km_dia, 1),
+        "mediana_receita_por_km": round(med_r_km, 2),
+        "mediana_combustivel_por_km": round(med_comb_km, 2),
+        "mediana_manutencao": round(med_manut, 2),
+        "veiculos_sem_apontamento": limpos,
+        "plano": plano,
+    }
+    evid = [_ev("consulta", "atua:frota.resultado_veiculo", r.referencia,
+                f"{len(frota)} cavalo(s) da frota própria com CT-e em {dias} "
+                f"dias; mediana da casa: {f_num(med_km_dia, 1)} km/dia, "
+                f"{f_reais_km(med_r_km)}/km de receita e "
+                f"{f_reais_km(med_comb_km)}/km de combustível lançado",
+                "atua:ctrc+caixa_veiculo", r.dados["consultada_em"])]
+    afirm = [
+        {"texto": f"Dos {len(frota)} cavalos que puxaram CT-e em {dias} dias, "
+                  f"{len(plano)} têm pelo menos um ponto fora da mediana da "
+                  f"própria frota e {len(negativos)} fecharam com custo acima "
+                  f"da receita, somando {brl(abs(vermelho_total))} negativos.",
+         "natureza": "fato", "evidencia": 0},
+        {"texto": f"Trazer preço de frete e combustível das placas apontadas "
+                  f"para a mediana da própria casa — nem para o melhor "
+                  f"caminhão, nem para número de mercado — valeria "
+                  f"{brl(ganho_total)} na janela de {dias} dias.",
+         "natureza": "estimativa", "evidencia": 0},
+        {"texto": f"Encher a agenda das placas que giraram abaixo da mediana "
+                  f"valeria outros {brl(giro_total)}, contados a 15% de "
+                  f"contribuição sobre o quilômetro que faltou. Essa parcela "
+                  f"depende de haver carga, então vai separada da anterior.",
+         "natureza": "estimativa", "evidencia": 0},
+    ]
+    for p in negativos[:5]:
+        afirm.append({
+            "texto": f"{p['placa']}: {p['ctes']} CT-e(s), {f_num(p['km'])} km, "
+                     f"{brl(p['receita'])} de receita contra "
+                     f"{brl(p['custo'])} de custo. "
+                     + " ".join(p["sintomas"][:2]),
+            "natureza": "fato", "evidencia": 0})
+
+    incert = [
+        "receita e custo estão em datas diferentes: a receita é a emissão do "
+        "CT-e e o custo é o documento no caixa, então nota de oficina lançada "
+        "com atraso derruba a placa no período errado — por isso veículo de "
+        "pouco quilômetro sai com confiança baixa em vez de virar acusação",
+        "combustível por quilômetro aqui é real lançado por quilômetro rodado, "
+        "não consumo aferido na bomba: serve para escolher onde medir, não "
+        "para afirmar que o motorista gastou além da conta",
+        "a comparação é contra a mediana dos próprios cavalos da casa; se a "
+        "frota inteira estiver mal precificada, a mediana também está, e o "
+        "ganho estimado fica subestimado",
+        "o ganho de preço e consumo supõe o mesmo quilômetro rodado com preço "
+        "e consumo de mediana: é o tamanho da diferença, não dinheiro "
+        "contratado",
+        "o ganho de giro é a estimativa mais frágil da apuração: supõe que "
+        "existe carga para o quilômetro que faltou e usa 15% de contribuição, "
+        "que é a margem do agenciamento, não a da frota",
+        "a contribuição por placa não é lucro: falta depreciação, IPVA, "
+        "seguro, estrutura e o salário de motorista que não desce à placa",
+    ]
+    return Entrega(
+        "concluida",
+        f"{len(plano)} de {len(frota)} cavalos com ponto fora da mediana da "
+        f"casa; {len(negativos)} no vermelho ({brl(abs(vermelho_total))}). "
+        f"Preço e consumo na mediana valem {brl(ganho_total)}; encher a "
+        f"agenda das paradas, outros {brl(giro_total)}.",
+        resultado, afirm, evid, incert,
+        bruto={"linhas": [_linha(l, campos) for l in frota]},
+    )
+
+
 # ===========================================================================
 # Auditores (contraprova)
 # ===========================================================================
@@ -1514,6 +1825,179 @@ def aud_custo_da_frota(*, empresa_id, missao_id, tarefa_id, entradas, acoes,
         {**dados, "divergencia": round(abs(dif), 2)}, evid)
 
 
+def aud_plano_veiculo(*, empresa_id, missao_id, tarefa_id, entradas, acoes,
+                      alvo) -> Entrega:
+    """Contesta Caio: o quilômetro que sustenta o plano é real?
+
+    O plano por placa se apoia inteiro na distância declarada no conhecimento
+    (`ctrc.vl_km_rodado`): é ela que diz quem rodou pouco, quem vendeu frete
+    barato e quem gastou combustível demais por quilômetro. Se essa distância
+    estiver errada, os três diagnósticos caem juntos.
+
+    A porta usada aqui é outra: o hodômetro lido no abastecimento
+    (`caixa_veiculo.vl_medidor`). É leitura de painel, não declaração de
+    documento. E a divergência não é só erro de digitação — cavalo cujo painel
+    andou muito mais do que os CT-es dele somam é cavalo que rodou sem
+    conhecimento emitido na placa, e isso é dinheiro, não estatística.
+    """
+    dias = int(entradas.get("dias") or 90)
+    r = _rodar("contraprova.km_por_hodometro", {"dias": dias, "limite": 300},
+               empresa_id=empresa_id, missao_id=missao_id,
+               tarefa_id=tarefa_id, acoes=acoes)
+    if not r.ok:
+        return _bloqueada(f"leitura de hodômetro indisponível: {r.erro}")
+
+    hod = {str(l["ds_placa"]).strip(): l for l in r.dados["linhas"]}
+    plano = ((alvo.get("resultado") or {}).get("plano") or [])
+    if not plano:
+        return _veredito(
+            "auditoria", "nao_verificavel",
+            "a apuração não apontou nenhuma placa, então não há diagnóstico "
+            "por veículo para conferir contra o hodômetro.",
+            {"placas_no_plano": 0}, [])
+
+    TOL = 0.30          # 30% de folga: abastecer fora do dia distorce a ponta
+    rodou_calado, km_inflado, confere = [], [], []
+    fora_da_frota: list[dict] = []
+    sem_leitura, com_salto = [], []
+    for p in plano:
+        h = hod.get(p["placa"])
+        if h is None:
+            sem_leitura.append(p["placa"])
+            continue
+        if h["id_salto"]:
+            com_salto.append(p["placa"])
+            continue
+        km_h = _f(h["km_hodometro"])
+        km_c = _f(p.get("km"))
+        # A mesma placa emitindo CT-e como agregado ou terceiro. A apuração
+        # filtra proprietário = 1 e não enxerga esses conhecimentos, então o
+        # quilômetro deles some da conta e o painel fica "sobrando".
+        km_o = _f(h.get("km_outro"))
+        rec_o = _f(h.get("vl_receita_outro"))
+        item = {"placa": p["placa"], "km_cte": round(km_c, 0),
+                "km_hodometro": round(km_h, 0),
+                "diferenca": round(km_h - km_c, 0),
+                "km_fora_da_frota": round(km_o, 0),
+                "receita_fora_da_frota": round(rec_o, 2),
+                "ctes_fora_da_frota": int(h.get("qt_ctes_outro") or 0),
+                "leituras": int(h["qt_leituras"] or 0),
+                "contribuicao": p.get("contribuicao")}
+        if item["ctes_fora_da_frota"]:
+            fora_da_frota.append(item)
+        if km_c <= 0 or km_h <= 0:
+            sem_leitura.append(p["placa"])
+        elif km_h > (km_c + km_o) * (1 + TOL) and km_h - km_c - km_o > 1000:
+            item["receita_por_km_real"] = (round(_f(p["receita"]) / km_h, 2)
+                                           if km_h else None)
+            rodou_calado.append(item)
+        elif km_h < km_c * (1 - TOL) and km_c - km_h > 1000:
+            km_inflado.append(item)
+        else:
+            confere.append(item)
+
+    evid = [_ev("consulta", "atua:contraprova.km_por_hodometro", r.referencia,
+                f"hodômetro de {len(hod)} placa(s) em {dias} dias: "
+                + "; ".join(f"{i['placa']} CT-e {f_num(i['km_cte'])} km contra "
+                            f"painel {f_num(i['km_hodometro'])} km"
+                            for i in (rodou_calado + km_inflado + confere)[:6]),
+                "atua:caixa_veiculo.vl_medidor",
+                r.dados.get("consultada_em", ""))]
+    rec_fora = sum(i["receita_fora_da_frota"] for i in fora_da_frota)
+    dados = {"placas_no_plano": len(plano), "conferem": len(confere),
+             "rodou_sem_cte": rodou_calado, "km_declarado_acima": km_inflado,
+             "placas_com_cte_fora_da_frota": fora_da_frota,
+             "receita_fora_da_frota": round(rec_fora, 2),
+             "sem_leitura_de_hodometro": sem_leitura,
+             "hodometro_com_salto": com_salto,
+             "tolerancia_pct": TOL}
+
+    # Placa própria emitindo como agregado é achado maior do que o plano: a
+    # receita dela não está no resultado da frota, e o custo dela está.
+    if fora_da_frota:
+        nomes = ", ".join(f"{i['placa']} ({i['ctes_fora_da_frota']} CT-e, "
+                          f"{brl(i['receita_fora_da_frota'])})"
+                          for i in sorted(fora_da_frota,
+                                          key=lambda x: -x["receita_fora_da_frota"])[:4])
+        return _veredito(
+            "auditoria", "contradiz",
+            f"{len(fora_da_frota)} placa(s) do plano emitiram conhecimento "
+            f"como agregado ou terceiro no mesmo período: {nomes}, somando "
+            f"{brl(rec_fora)} de receita que não entrou no resultado da frota "
+            f"própria — enquanto o custo dessas mesmas placas entrou. O plano "
+            f"está tratando como veículo ocioso quem faturou por outra "
+            f"classificação. Antes de repactuar frete ou pautar venda, é "
+            f"preciso decidir o que essas placas são: se são da casa, a "
+            f"receita delas volta para a frota e o vermelho muda de tamanho.",
+            {**dados, "divergencia": round(rec_fora, 2)}, evid,
+            incert=["a classificação está no conhecimento, não no cadastro do "
+                    "veículo: a placa pode estar certa no cadastro e errada no "
+                    "CT-e, ou o contrário — os dois casos aparecem iguais "
+                    "daqui",
+                    "veículo vendido ou repassado no meio do período aparece "
+                    "assim por motivo legítimo"])
+
+    if rodou_calado:
+        pior = max(rodou_calado, key=lambda i: i["diferenca"])
+        nomes = ", ".join(f"{i['placa']} ({f_num(i['km_cte'])} contra "
+                          f"{f_num(i['km_hodometro'])} km)"
+                          for i in rodou_calado[:4])
+        km_extra = sum(i["diferenca"] for i in rodou_calado)
+        return _veredito(
+            "auditoria", "contradiz",
+            f"O painel não bate com o conhecimento em {len(rodou_calado)} das "
+            f"{len(plano)} placas do plano: {nomes}. São {f_num(km_extra)} km "
+            f"rodados a mais do que os CT-es dessas placas declaram. Chamar "
+            f"{pior['placa']} de veículo ocioso é errado — ela andou. O que "
+            f"não apareceu foi conhecimento emitido nela, e essa é uma "
+            f"pergunta maior do que a do plano: quilômetro rodado sem "
+            f"documento no próprio veículo.",
+            {**dados, "divergencia": km_extra}, evid,
+            incert=["hodômetro só é lido quando o veículo abastece na conta da "
+                    "empresa: viagem inteira paga fora do sistema não aparece "
+                    "nem no painel nem no CT-e",
+                    "o cavalo pode ter puxado carreta em CT-e emitido em outra "
+                    "placa; isso explica o quilômetro sem receita e continua "
+                    "sendo problema de apontamento"])
+
+    if km_inflado:
+        nomes = ", ".join(f"{i['placa']} ({f_num(i['km_cte'])} declarados "
+                          f"contra {f_num(i['km_hodometro'])} no painel)"
+                          for i in km_inflado[:4])
+        return _veredito(
+            "auditoria", "contradiz",
+            f"{len(km_inflado)} placa(s) do plano declararam no CT-e mais "
+            f"quilômetro do que o painel andou: {nomes}. Como o preço por "
+            f"quilômetro do plano divide a receita por essa distância, essas "
+            f"placas aparecem mais baratas do que são — e a medida proposta "
+            f"para elas, repactuar preço, está mirando um número inflado.",
+            {**dados, "divergencia": sum(abs(i["diferenca"])
+                                         for i in km_inflado)}, evid)
+
+    if not confere:
+        return _veredito(
+            "auditoria", "nao_verificavel",
+            f"Nenhuma das {len(plano)} placas do plano tem leitura de "
+            f"hodômetro suficiente no período para conferir a quilometragem "
+            f"({len(sem_leitura)} sem leitura, {len(com_salto)} com troca de "
+            f"painel). O plano fica de pé sobre a distância declarada no "
+            f"conhecimento, sem segunda fonte.", dados, evid)
+
+    return _veredito(
+        "auditoria", "confirma",
+        f"O hodômetro do abastecimento confirma a quilometragem de "
+        f"{len(confere)} das {len(plano)} placas do plano, dentro de "
+        f"{int(TOL * 100)}% de folga. A distância que sustenta o diagnóstico "
+        f"de giro, de preço por quilômetro e de consumo é real."
+        + (f" Ficaram sem conferência {len(sem_leitura) + len(com_salto)} "
+           f"placa(s), por falta de leitura ou troca de painel."
+           if sem_leitura or com_salto else ""),
+        dados, evid,
+        incert=["a folga de 30% existe porque o abastecimento não acontece no "
+                "dia do fechamento: a ponta do período fica sempre um pouco "
+                "fora dos dois lados"])
+
+
 def aud_margem_frota_propria(*, empresa_id, missao_id, tarefa_id, entradas,
                              acoes, alvo) -> Entrega:
     """Contesta Caio: quanto da margem negativa é transferência interna?
@@ -1679,20 +2163,26 @@ registrar(Definicao(
     area="Controladoria & Custos",
     promessa="A margem que existe atrás de cada conhecimento.", versao=1,
     competencias=["margem-por-cte", "custo-de-carta-frete",
-                  "cte-com-margem-negativa"],
+                  "cte-com-margem-negativa", "plano-por-placa"],
     ferramentas=["atua"],
     acoes=["atua.controladoria.margem_por_cte",
-           "atua.contraprova.lucratividade_custo_frota"],
+           "atua.contraprova.lucratividade_custo_frota",
+           "atua.frota.resultado_veiculo"],
     entradas={"dias": "int", "pr_margem_min": "num",
-              "cd_pessoa_filial": "int", "limite": "int"},
+              "cd_pessoa_filial": "int", "limite": "int", "foco": "texto"},
     saidas={"receita": "num", "custo_carta_frete": "num",
             "margem_contribuicao": "num", "margem_contribuicao_pct": "num",
             "ctes_margem_negativa": "int", "ctes_sem_carta_frete": "int"},
+    saidas_foco={"veiculo": {
+        "veiculos_analisados": "int", "veiculos_com_apontamento": "int",
+        "veiculos_no_vermelho": "int", "vermelho_total": "num",
+        "ganho_estimado_total": "num", "ganho_giro_total": "num",
+        "plano": "lista"}},
     limites={"tempo_s": 120, "custo_centavos": 0},
     criterios=["agregado não soma com detalhe",
                "CT-e sem carta frete fora do cálculo",
                "resultado tratado como contribuição, nunca como lucro"],
-    executor=exec_controladoria_margem,
+    executor=exec_controladoria,
     auditor=aud_custo_da_frota,
 ))
 
@@ -1704,7 +2194,8 @@ registrar(Definicao(
     competencias=["resultado-por-setor", "frota-contra-agenciamento",
                   "resultado-por-agencia"],
     ferramentas=["atua"],
-    acoes=["atua.lucratividade.por_setor", "atua.lucratividade.por_agencia"],
+    acoes=["atua.lucratividade.por_setor", "atua.lucratividade.por_agencia",
+           "atua.contraprova.km_por_hodometro"],
     entradas={"dias": "int", "cd_pessoa_filial": "int", "limite": "int"},
     saidas={"receita_total": "num", "frota_propria": "dict",
             "agenciamento": "dict", "agencias_apuradas": "int",
@@ -1717,6 +2208,7 @@ registrar(Definicao(
                "comparável, em vez de virar prejuízo de agência",
                "resultado tratado como contribuição, nunca como lucro"],
     executor=exec_lucratividade_setor,
+    auditor=aud_plano_veiculo,
 ))
 
 registrar(Definicao(

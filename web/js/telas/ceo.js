@@ -515,9 +515,119 @@ function setores(d) {
       tabela,
       el('h4.ceo-sub', { texto: 'Por veículo — frota própria' }),
       veiculos(d, dias),
+      planoFrota(d),
       carimbo(s, 'Setores'),
     ],
   });
+}
+
+/* ------------------------------------------- o que fazer com cada placa -- */
+
+/* Saber quem está no vermelho não tira ninguém do vermelho. Este bloco é a
+   parte que vira ordem do dia: por placa, o que está fora da mediana da casa,
+   a medida concreta, quem executa e quanto vale se for feita. O ganho é
+   estimativa de contribuição, nunca lucro, e vem sempre com a dúvida do
+   auditor ao lado — o plano se apoia na quilometragem declarada no CT-e, e é
+   ela que a Vera confere pelo hodômetro do abastecimento. */
+function planoFrota(d) {
+  const p = d.plano_frota || null;
+  if (!p) {
+    return el('div.ceo-plano.falha', null, [
+      el('h4', { texto: 'Plano por veículo' }),
+      el('p', {
+        texto: 'O Controller ainda não entregou o plano placa a placa. A varredura roda todo dia às 18h; enquanto ela não fechar, a tabela acima diz quem está no vermelho mas não diz o que fazer.',
+      }),
+    ]);
+  }
+
+  const dd = p.dados || {};
+  const linhas = Array.isArray(dd.plano) ? dd.plano : [];
+  const c = p.contestacao || null;
+  const contesta = c && c.veredito === 'contradiz';
+
+  const numero = (rot, valor, apoio) => el('div.ceo-plano-num', null, [
+    el('span.rot', { texto: rot }),
+    el('b', { texto: valor, title: valor }),
+    el('span.apoio', { texto: apoio }),
+  ]);
+
+  const cabeca = el('div.ceo-plano-topo', null, [
+    el('h4', { texto: 'Plano por veículo' }),
+    el('span.ceo-plano-quem', {
+      texto: `${p.analista || 'Controladoria'} · ${diaPorExtenso(p.dita_em)} às ${horaSeg(p.dita_em)} · missão ${p.missao_id}`,
+    }),
+  ]);
+
+  const resumo = el('div.ceo-plano-nums', null, [
+    numero('Cavalos lidos', f.numero(N(dd.veiculos_analisados) || 0),
+      `${f.numero(N(dd.veiculos_com_apontamento) || 0)} com ponto fora da mediana`),
+    numero('No vermelho', f.numero(N(dd.veiculos_no_vermelho) || 0),
+      `${f.dinheiro(Math.abs(N(dd.vermelho_total) || 0))} de contribuição negativa`),
+    numero('Preço e consumo na mediana', f.dinheiro(N(dd.ganho_estimado_total) || 0),
+      'se cada placa fora da curva voltar para a mediana da casa'),
+    numero('Encher a agenda das paradas', f.dinheiro(N(dd.ganho_giro_total) || 0),
+      'estimativa mais frágil: depende de haver carga na praça'),
+  ]);
+
+  const medida = (m) => el('li', null, [
+    el('span.acao', { texto: m.acao }),
+    el('span.porque', { texto: m.porque }),
+    el('span.quem', null, [
+      el('b', { texto: m.quem }),
+      N(m.ganho) ? el('span.ganho', { texto: `vale ${f.dinheiro(N(m.ganho))}` }) : null,
+    ]),
+  ]);
+
+  const cartao = (l) => el(`div.ceo-placa${l.no_vermelho ? '.vermelho' : ''}`, null, [
+    el('div.ceo-placa-topo', null, [
+      el('b.mono', { texto: l.placa }),
+      el('span.modelo', { texto: l.modelo || 'sem modelo no cadastro' }),
+      el('span.contrib', {
+        texto: `${f.dinheiro(N(l.contribuicao) || 0)} de contribuição`,
+      }),
+      el(`span.confianca.${l.confianca || 'media'}`, {
+        texto: `confiança ${l.confianca || 'media'}`,
+      }),
+    ]),
+    el('div.ceo-placa-nums', {
+      texto: `${f.numero(N(l.ctes) || 0)} CT-e · ${f.numero(N(l.km) || 0)} km · ${f.numero(N(l.km_dia) || 0, 1)} km/dia · receita ${f.numero(N(l.receita_por_km) || 0, 2)}/km · combustível ${f.numero(N(l.combustivel_por_km) || 0, 2)}/km`,
+    }),
+    el('ul.ceo-sintomas', null,
+      (l.sintomas || []).map((t) => el('li', { texto: t }))),
+    el('ul.ceo-medidas', null, (l.medidas || []).map(medida)),
+  ]);
+
+  const corpo = [cabeca, resumo, el('p.ceo-plano-frase', { texto: p.resumo })];
+
+  if (contesta) {
+    corpo.push(el('div.ceo-plano-duvida', null, [
+      el('span.ceo-selo-veredito.erro', { texto: 'o auditor contesta este plano' }),
+      el('p', { texto: `${c.auditor}: ${c.resumo}` }),
+      el('span.ceo-plano-quem', {
+        texto: `dito ${haQuanto(c.dita_em) || ''} — conferência pelo hodômetro do abastecimento, caminho que não passa pelo conhecimento`,
+      }),
+    ]));
+  } else if (c) {
+    corpo.push(el('div.ceo-plano-duvida.ok', null, [
+      el('span.ceo-selo-veredito.ok', { texto: 'quilometragem conferida' }),
+      el('p', { texto: `${c.auditor}: ${c.resumo}` }),
+    ]));
+  } else {
+    corpo.push(el('p.ceo-contra-nota', {
+      texto: 'Nenhum auditor conferiu esta quilometragem ainda. O plano acima se apoia na distância declarada no conhecimento, sem segunda fonte.',
+    }));
+  }
+
+  corpo.push(el('div.ceo-placas', null, linhas.map(cartao)));
+
+  const limpas = dd.veiculos_sem_apontamento || [];
+  if (limpas.length) {
+    corpo.push(el('p.ceo-plano-limpas', {
+      texto: `Sem apontamento: ${limpas.join(', ')}. Estas placas estão dentro da mediana da casa em giro, preço e consumo — nada a fazer com elas nesta rodada.`,
+    }));
+  }
+
+  return el(`div.ceo-plano${contesta ? '.diverge' : ''}`, null, corpo);
 }
 
 /* ------------------------------------------------- resultado por veículo -- */

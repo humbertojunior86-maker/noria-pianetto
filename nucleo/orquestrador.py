@@ -90,12 +90,28 @@ CONTRAPROVA: dict[str, list[dict]] = {
                     "centro de custo mostrar despesa que o caixa do veículo "
                     "não mostra, a margem da frota está apoiada em custo "
                     "incompleto e sai alta por construção"}],
+    # Caio tem duas frentes e cada uma pede um contestador diferente. O campo
+    # "foco" liga a contraprova ao recorte que está sendo apurado: perguntar
+    # sobre carta frete numa apuração por placa seria contestar outra coisa.
     "controladoria.margem": [{
-        "agente": "frota.resultado",
+        "agente": "frota.resultado", "foco": "",
         "pergunta": "quantos CT-es de margem negativa são de frota própria? "
                     "nesses a carta frete é transferência interna, não custo, "
-                    "e a margem negativa pode ser artefato de cálculo"}],
+                    "e a margem negativa pode ser artefato de cálculo"},
+        {
+        "agente": "controladoria.lucratividade", "foco": "veiculo",
+        "pergunta": "as placas apontadas como negativas continuam negativas "
+                    "com o dobro da janela? veículo que ficou dois meses em "
+                    "oficina, ou que recebeu a nota do motor de uma vez, "
+                    "aparece igual a veículo estruturalmente ruim em 90 dias — "
+                    "e a decisão que cada um pede é oposta"}],
 }
+
+
+def _foco(entradas: dict) -> str:
+    """Recorte declarado na tarefa. Vazio quando não há recorte."""
+    v = str(entradas.get("foco") or "").lower()
+    return "veiculo" if v in ("veiculo", "veiculos", "placa") else ""
 
 
 PADROES = [
@@ -257,7 +273,8 @@ def planejar(missao_id: int, *, motivo: str = "plano inicial") -> dict:
         "objetivo": m["objetivo"], "agente_id": d.id, "agente_versao": d.versao,
         "entradas": bd.j(intencao["entradas"]), "fontes": bd.j(d.ferramentas),
         "acoes_permitidas": bd.j(d.acoes), "formato_entrega": "json+md",
-        "saidas_esperadas": bd.j(d.saidas),
+        "saidas_esperadas": bd.j(
+            d.saidas_foco.get(_foco(intencao["entradas"]), d.saidas)),
         "prazo": m["prazo"], "orcamento_centavos":
             int(d.limites.get("custo_centavos", 0)),
         "max_tentativas": 2, "tentativas": 0, "estado": "pendente",
@@ -305,6 +322,8 @@ def _plantar_contraprovas(m: dict, d, plano_id: int, tid: int,
     emp, missao_id = m["empresa_id"], m["id"]
     criados: list[int] = []
     for i, cp in enumerate(CONTRAPROVA.get(d.id, []), 1):
+        if "foco" in cp and cp["foco"] != _foco(entradas):
+            continue
         rev = ar.obter(cp["agente"])
         if rev is None or rev.auditor is None:
             bd.evento(emp, "contraprova.sem_par",

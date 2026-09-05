@@ -259,9 +259,50 @@ def sala_do_ceo(s: dict = Depends(sessao), forcar: bool = False):
             "missao_id": aud["missao_id"],
         }
 
+    # ------------------------------------- o plano placa a placa e a dúvida
+    # A apuração por veículo diz quem está no vermelho; o plano diz o que
+    # fazer com cada placa. Os dois andam juntos com a contestação da Vera:
+    # ela é quem confere, pelo hodômetro, se o quilômetro que sustenta o
+    # diagnóstico existe. Plano sem essa dúvida ao lado vira ordem de serviço
+    # apoiada em número não conferido.
+    ap = bd.linha(
+        "SELECT e.resumo, e.resultado, e.criada_em, e.missao_id, t.agente_id "
+        "FROM entrega e JOIN tarefa t ON t.id=e.tarefa_id "
+        "WHERE e.empresa_id=? AND t.agente_id='controladoria.margem' "
+        "AND t.chave NOT LIKE '%#c%' AND e.resultado LIKE '%\"plano\"%' "
+        "ORDER BY e.id DESC LIMIT 1", (emp,))
+    plano_frota = None
+    if ap:
+        res = bd.dj(ap["resultado"], {}) or {}
+        d_ap = ar.obter(ap["agente_id"])
+        duvida = bd.linha(
+            "SELECT e.resumo, e.resultado, e.criada_em, t.agente_id "
+            "FROM entrega e JOIN tarefa t ON t.id=e.tarefa_id "
+            "WHERE e.empresa_id=? AND e.missao_id=? AND t.chave LIKE '%#c%' "
+            "ORDER BY e.id DESC LIMIT 1", (emp, ap["missao_id"]))
+        contesta = None
+        if duvida:
+            rd = bd.dj(duvida["resultado"], {}) or {}
+            d_rev = ar.obter(duvida["agente_id"])
+            contesta = {"auditor": d_rev.nome if d_rev else duvida["agente_id"],
+                        "papel": d_rev.papel if d_rev else None,
+                        "veredito": rd.get("veredito"),
+                        "resumo": duvida["resumo"],
+                        "dados": {k: v for k, v in rd.items()
+                                  if k != "veredito"},
+                        "dita_em": duvida["criada_em"]}
+        plano_frota = {
+            "analista": d_ap.nome if d_ap else ap["agente_id"],
+            "papel": d_ap.papel if d_ap else None,
+            "resumo": ap["resumo"], "dados": res,
+            "dita_em": ap["criada_em"], "missao_id": ap["missao_id"],
+            "contestacao": contesta,
+        }
+
     hoje = agora[:10]
     return {
         "contraprova_frota": contraprova,
+        "plano_frota": plano_frota,
         "empresa": bd.linha("SELECT nome, cnpj FROM empresa WHERE id=?", (emp,)),
         "erp": erp,
         "lido_em": lido_em,

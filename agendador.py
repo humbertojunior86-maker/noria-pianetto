@@ -121,6 +121,11 @@ VIGILANCIA = {
         "frota.resultado",
         "Apurar receita e custo por veículo da frota própria",
         {"dias": 90}),
+    "plano_veiculo": (
+        "controladoria.margem",
+        "Analisar cada veículo da frota própria e dizer o que fazer para "
+        "tirar do vermelho o que está no vermelho",
+        {"dias": 90, "limite": 300, "foco": "veiculo"}),
     "setor_lucratividade": (
         "controladoria.lucratividade",
         "Apurar o resultado por setor: frota própria contra agenciamento e por agência",
@@ -162,6 +167,11 @@ ROTINAS = [
     ("cliente_sumiu", "comercial: cliente que parou de faturar", 15, {3}, None),
     ("pagar15", "contas a pagar: vencidos +15 dias", 16, {1, 3}, None),
     ("frota_veiculo", "frota: resultado por veículo", 17, {0}, None),
+    # Todo dia, inclusive domingo: caminhão parado ou rodando barato custa
+    # dinheiro no sábado igual custa na terça, e o CEO abre o painel de manhã
+    # esperando o diagnóstico da véspera, não o da semana passada.
+    ("plano_veiculo", "controladoria: plano por veículo da frota própria", 18,
+     None, None),
     ("margem_cte", "controladoria: margem por CT-e", 17, {4}, None),
     # Todo dia, sem exceção de domingo. Esta varredura carrega a contraprova
     # do custo da frota, e contraprova que só roda duas vezes por semana
