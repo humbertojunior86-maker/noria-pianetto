@@ -509,12 +509,113 @@ function setores(d) {
     nota: `Últimos ${dias} dias · margem de contribuição, não lucro`,
     corpo: [
       cartoes,
+      contraprova(d),
       el('ul.ceo-ressalvas', null, ressalvas.map((t) => el('li', { texto: t }))),
       el('h4.ceo-sub', { texto: 'Por agência' }),
       tabela,
       carimbo(s, 'Setores'),
     ],
   });
+}
+
+/* ------------------------------------------- contraprova do custo da frota */
+
+/* A margem da frota vale o que vale o custo dela. Aqui o custo é refeito por
+   outro caminho do banco — o centro de custo, que é como a contabilidade
+   enxerga a mesma despesa — e o resultado dos dois caminhos fica lado a lado.
+   Se divergirem muito, o número de cima é teto, não fato.
+
+   Quem assina a contestação é um agente, com nome e hora. Contraprova sem
+   autor é auditoria de enfeite. */
+
+function contraprova(d) {
+  const q = bloco(d.erp, 'contraprova_frota');
+  const dito = d.contraprova_frota || null;
+
+  const custo = {};
+  let cartaFora = 0;
+  let cartaInterna = null;
+  q.linhas.forEach((l) => {
+    if (l.linha === 'custo') custo[l.caminho] = l;
+    else if (l.linha === 'carta_frete_propria') {
+      if (/PIANETTO/i.test(String(l.nm_recebedor || ''))) cartaInterna = l;
+      else cartaFora += N(l.vl) || 0;
+    }
+  });
+  const cv = custo.caixa_veiculo || null;
+  const cc = custo.centro_custo || null;
+
+  if (!cv || !cc) {
+    return el('div.ceo-contra.falha', null, [
+      el('p', { texto: `Contraprova indisponível: ${q.erro || 'o ERP não devolveu os dois caminhos de custo'}. O custo da frota acima segue sem conferência independente.` }),
+    ]);
+  }
+
+  const vCv = N(cv.vl) || 0;
+  const vCc = N(cc.vl) || 0;
+  const dif = vCv - vCc;
+  const prDif = vCv ? (Math.abs(dif) / vCv) * 100 : 0;
+  const fecha = prDif <= 10 && cartaFora === 0;
+
+  const via = (rot, l, valor, apoio, forte) => el(`div.ceo-via${forte ? '.forte' : ''}`, null, [
+    el('span.rot', { texto: rot }),
+    el('b', { texto: f.dinheiro(valor), title: f.dinheiro(valor) }),
+    el('span.apoio', { texto: apoio }),
+  ]);
+
+  const selo = el(`span.ceo-selo-veredito.${fecha ? 'ok' : 'erro'}`, {
+    texto: fecha ? 'os dois caminhos fecham' : 'os dois caminhos não fecham',
+  });
+
+  const frase = fecha
+    ? `Diferença de ${f.dinheiro(Math.abs(dif))} entre os dois caminhos, ${f.numero(prDif, 1)}% — dentro do que se explica pelas ${f.numero(N(cv.qt_chaves) || 0)} placas ativas contra apenas ${f.numero(N(cc.qt_chaves) || 0)} centros de custo de frota abertos. O custo da frota se sustenta.`
+    : `Diferença de ${f.dinheiro(Math.abs(dif))} entre os dois caminhos, ${f.numero(prDif, 1)}%. Enquanto isso não for explicado, a margem da frota é um teto, não um número fechado.`;
+
+  const corpo = [
+    el('div.ceo-contra-topo', null, [
+      el('h4', { texto: 'Contraprova do custo da frota' }),
+      selo,
+    ]),
+    el('div.ceo-vias', null, [
+      via('Pelo caixa do veículo', cv, vCv,
+        `${f.numero(N(cv.qt) || 0)} lançamentos em ${f.numero(N(cv.qt_chaves) || 0)} placas ativas · caminho usado no cálculo acima`, true),
+      el('span.ceo-vs', { texto: 'contra' }),
+      via('Pelo centro de custo', cc, vCc,
+        `${f.numero(N(cc.qt) || 0)} lançamentos em ${f.numero(N(cc.qt_chaves) || 0)} centros de custo de frota · caminho da contabilidade`),
+    ]),
+    el('p.ceo-contra-frase', { texto: frase }),
+  ];
+
+  /* O teste que decide se a carta frete da frota é custo ou transferência: o
+     nome de quem recebeu. Enquanto for a própria Pianetto, é dinheiro trocando
+     de bolso dentro de casa. */
+  if (cartaInterna) {
+    corpo.push(el('p.ceo-contra-nota', {
+      texto: `Carta frete dos CT-es de frota própria: ${f.dinheiro(N(cartaInterna.vl) || 0)} em ${f.numero(N(cartaInterna.qt) || 0)} cartas, todas pagas a ${cartaInterna.nm_recebedor}. É a própria empresa — por isso ficou fora do custo.`,
+    }));
+  }
+  if (cartaFora > 0) {
+    corpo.push(el('p.ceo-contra-nota.erro', {
+      texto: `Atenção: ${f.dinheiro(cartaFora)} de carta frete de CT-e de frota própria foram para transportador de fora. Esse valor é custo de verdade e não está no cálculo acima.`,
+    }));
+  }
+
+  if (dito) {
+    const vd = String(dito.veredito || '');
+    const rotulo = vd === 'confirma' ? 'confirmou' : vd === 'contradiz' ? 'contestou' : 'não conseguiu verificar';
+    corpo.push(el(`div.ceo-assinatura.${vd === 'contradiz' ? 'erro' : vd === 'confirma' ? 'ok' : ''}`, null, [
+      el('span.quem', { texto: `${dito.auditor}${dito.papel ? `, ${dito.papel}` : ''}, ${rotulo}` }),
+      el('p', { texto: dito.resumo }),
+      el('span.quando', { texto: `dito em ${diaPorExtenso(dito.dita_em)} às ${horaSeg(dito.dita_em)} · missão ${dito.missao_id}` }),
+    ]));
+  } else {
+    corpo.push(el('p.ceo-contra-nota', {
+      texto: 'Nenhum auditor se pronunciou ainda sobre este custo. Os dois caminhos acima são leitura direta do banco, sem veredito de agente.',
+    }));
+  }
+
+  corpo.push(carimbo(q, 'Caminhos de custo'));
+  return el(`div.ceo-contra${fecha ? '' : '.diverge'}`, null, corpo);
 }
 
 /* --------------------------------------------------------------- equipe -- */

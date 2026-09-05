@@ -162,7 +162,12 @@ def _ceo_erp(emp: int) -> dict:
             ("lucratividade.por_setor", "setor",
              {"dias": 90, "cd_pessoa_filial": None}),
             ("lucratividade.por_agencia", "agencia",
-             {"dias": 90, "cd_pessoa_filial": None, "limite": 60})):
+             {"dias": 90, "cd_pessoa_filial": None, "limite": 60}),
+            # A contraprova refaz o custo da frota por outro caminho do banco.
+            # Ela vem para a tela junto com o número que ela contesta: separar
+            # os dois deixaria o CEO ler a margem sem ler a dúvida sobre ela.
+            ("contraprova.lucratividade_custo_frota", "contraprova_frota",
+             {"dias": 90})):
         r = fb.rodar("atua", op, par, empresa_id=emp,
                      acoes_permitidas=[f"atua.{op}"])
         if r.ok:
@@ -225,8 +230,33 @@ def sala_do_ceo(s: dict = Depends(sessao), forcar: bool = False):
         "AND estado IN ('planejada','executando','validando','replanejando') "
         "ORDER BY id DESC", (emp,))
 
+    # --------------------------------------------- a palavra do auditor
+    # O número do custo da frota é contestado por um agente, não por uma regra
+    # escondida no código. Quem contestou, quando e com que veredito vai para
+    # a tela; sem isso a contraprova vira enfeite.
+    aud = bd.linha(
+        "SELECT e.resumo, e.resultado, e.criada_em, e.status_declarado, "
+        "e.missao_id, t.agente_id, t.chave "
+        "FROM entrega e JOIN tarefa t ON t.id=e.tarefa_id "
+        "WHERE e.empresa_id=? AND t.agente_id='controladoria.margem' "
+        "AND t.chave LIKE '%#c%' ORDER BY e.id DESC LIMIT 1", (emp,))
+    contraprova = None
+    if aud:
+        res = bd.dj(aud["resultado"], {}) or {}
+        d_aud = ar.obter(aud["agente_id"])
+        contraprova = {
+            "auditor": d_aud.nome if d_aud else aud["agente_id"],
+            "papel": d_aud.papel if d_aud else None,
+            "veredito": res.get("veredito"),
+            "resumo": aud["resumo"],
+            "dados": {k: v for k, v in res.items() if k != "veredito"},
+            "dita_em": aud["criada_em"],
+            "missao_id": aud["missao_id"],
+        }
+
     hoje = agora[:10]
     return {
+        "contraprova_frota": contraprova,
         "empresa": bd.linha("SELECT nome, cnpj FROM empresa WHERE id=?", (emp,)),
         "erp": erp,
         "lido_em": lido_em,

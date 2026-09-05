@@ -1983,3 +1983,88 @@ body.modo-saguao {
 @media (max-width: 900px) {
   .ceo-setores { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------------ contraprova do custo da frota (CEO) */
+.ceo-contra {
+  margin-top: var(--e-4); padding: var(--e-4);
+  border: 1px solid var(--linha-2); border-left: 3px solid var(--ok);
+  border-radius: var(--raio-md); background: var(--painel-fundo);
+}
+.ceo-contra.diverge { border-left-color: var(--erro); }
+.ceo-contra.falha { border-left-color: var(--atencao); }
+.ceo-contra.falha p { margin: 0; font-size: var(--t-peq); color: var(--tinta-2); }
+.ceo-contra-topo {
+  display: flex; align-items: center; gap: var(--e-3);
+  flex-wrap: wrap; margin-bottom: var(--e-3);
+}
+.ceo-contra-topo h4 {
+  margin: 0; font-family: var(--display); font-size: var(--t-mini);
+  letter-spacing: .1em; text-transform: uppercase; color: var(--tinta-3);
+  font-weight: var(--peso-forte);
+}
+.ceo-selo-veredito {
+  padding: 2px 9px; border-radius: var(--raio-total);
+  font-family: var(--mono); font-size: var(--t-micro);
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.ceo-selo-veredito.ok { color: var(--ok); background: var(--ok-fundo); }
+.ceo-selo-veredito.erro { color: var(--erro); background: var(--erro-fundo); }
+.ceo-vias {
+  display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: center; gap: var(--e-3);
+}
+.ceo-via {
+  padding: var(--e-3); border: 1px solid var(--linha);
+  border-radius: var(--raio-min); background: var(--painel);
+}
+.ceo-via.forte { border-color: var(--linha-3); }
+.ceo-via .rot {
+  display: block; font-size: var(--t-micro); text-transform: uppercase;
+  letter-spacing: .08em; color: var(--tinta-3);
+}
+.ceo-via b {
+  display: block; margin: 3px 0 2px; font-family: var(--display);
+  font-size: var(--t-lg); font-weight: var(--peso-forte); color: var(--tinta);
+  font-variant-numeric: tabular-nums;
+}
+.ceo-via .apoio {
+  display: block; font-size: var(--t-mini); color: var(--tinta-3);
+  line-height: 1.45;
+}
+.ceo-vs {
+  font-family: var(--mono); font-size: var(--t-micro); color: var(--tinta-4);
+  text-transform: uppercase; letter-spacing: .1em;
+}
+.ceo-contra-frase {
+  margin: var(--e-3) 0 0; font-size: var(--t-peq); color: var(--tinta-2);
+  line-height: 1.55;
+}
+.ceo-contra-nota {
+  margin: var(--e-2) 0 0; font-size: var(--t-mini); color: var(--tinta-3);
+  line-height: 1.5;
+}
+.ceo-contra-nota.erro { color: var(--erro); }
+.ceo-assinatura {
+  margin-top: var(--e-3); padding: var(--e-3);
+  border-radius: var(--raio-min); background: var(--painel);
+  border: 1px solid var(--linha);
+}
+.ceo-assinatura.ok { border-color: rgba(104, 211, 145, .3); }
+.ceo-assinatura.erro { border-color: rgba(240, 128, 128, .35); }
+.ceo-assinatura .quem {
+  display: block; font-size: var(--t-mini); font-weight: var(--peso-forte);
+  color: var(--tinta); text-transform: none;
+}
+.ceo-assinatura.ok .quem { color: var(--ok); }
+.ceo-assinatura.erro .quem { color: var(--erro); }
+.ceo-assinatura p {
+  margin: 4px 0 6px; font-size: var(--t-peq); color: var(--tinta-2);
+  line-height: 1.55;
+}
+.ceo-assinatura .quando {
+  font-family: var(--mono); font-size: var(--t-micro); color: var(--tinta-4);
+}
+@media (max-width: 900px) {
+  .ceo-vias { grid-template-columns: 1fr; }
+  .ceo-vs { text-align: center; }
+}
