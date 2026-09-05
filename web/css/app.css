@@ -844,9 +844,10 @@ table.tabela td strong { color: var(--tinta); font-weight: var(--peso-medio); }
   padding-top: var(--e-2);
   border-top: 1px solid var(--linha);
   font-size: var(--t-mini);
-  color: var(--tinta-3);
+  color: var(--tinta-2);
 }
-.ceo-numerao .apoio .frio { color: var(--tinta-3); }
+/* A nota explicativa do cartão é lida de longe, numa TV da sala: tinta-3 some. */
+.ceo-numerao .apoio .frio { color: var(--tinta-2); }
 .ceo-numerao .ceo-vermelho { color: var(--erro); font-weight: var(--peso-medio); }
 .ceo-numerao.ceo-falho { border-color: var(--atencao); background: var(--atencao-fundo); }
 .ceo-numerao.ceo-falho .motivo {
@@ -1017,7 +1018,7 @@ table.tabela td strong { color: var(--tinta); font-weight: var(--peso-medio); }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ceo-agente .area { color: var(--tinta-4); }
+.ceo-agente .area { color: var(--tinta-3); }
 .ceo-agente .estado {
   grid-column: 1 / -1;
   display: flex;
