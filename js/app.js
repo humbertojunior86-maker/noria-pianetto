@@ -1,6 +1,8 @@
 import { runBoot, createBrain } from './boot.js';
 import { META, PULSO, ETAPAS, AGENTES, CASOS, CONCILIACAO, CONFRONTOS, ROTINAS, ENTREGAVEIS, FLUXO, INTEGRACOES } from './data.js';
 import { viewArquivos, ingerir, carregarExemplos, limpar, ligaArquivos, drawerArqDivergencia, ARQ } from './arquivos.js';
+import { viewEspecialistas, drawerEspecialista, ESPECIALISTAS } from './especialistas.js';
+import { viewCortex, ligaCortex, drawerNo } from './grafo.js';
 
 /* ---------- helpers ---------- */
 const brl = (v, c = 0) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: c, maximumFractionDigits: c });
@@ -25,14 +27,18 @@ const ICON = {
   rotinas: '<path d="M9 11l2 2 4-4"/><rect x="3" y="4" width="18" height="16" rx="2"/>',
   integra: '<path d="M12 3v6m0 6v6M3 12h6m6 0h6"/><circle cx="12" cy="12" r="3"/>',
   arquivo: '<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/><path d="M9 15l2.5-2.5L14 15"/><path d="M11.5 12.5V18"/>',
+  cortex: '<circle cx="12" cy="12" r="2.6"/><circle cx="5" cy="6" r="1.6"/><circle cx="19" cy="7" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="18" cy="17" r="1.6"/><path d="M6.3 7.1l3.6 3.4M17.6 8.2l-3.8 2.4M7.2 16.8l3.2-2.9M16.6 15.9l-2.9-2"/>',
+  espec: '<circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0111 0"/><path d="M16 6.5a3 3 0 010 5.4"/><path d="M18.5 19a5 5 0 00-2.2-3.6"/>',
 };
 
 const VIEWS = [
   { id: 'ceo', nome: 'Sala do CEO', icon: 'ceo', tag: '4', crit: true, sub: 'Fila de decisões · atualizado agora' },
+  { id: 'cortex', nome: 'O Córtex', icon: 'cortex', tag: 'vivo', sub: 'Grafo de conhecimento · entidades reais do ATUA' },
   { id: 'conciliacao', nome: 'Conciliação ATUA × Bancos', icon: 'conc', tag: 'piloto', sub: 'Base 04/09/2026 · amarração das 09:15' },
   { id: 'arquivos', nome: 'Arquivos e OFX', icon: 'arquivo', tag: 'fase 1', sub: 'Leitura do extrato na origem · conciliação real' },
   { id: 'cadeia', nome: 'Cadeia de valor', icon: 'cadeia', tag: '18', sub: '18 etapas monitoradas ponta a ponta' },
-  { id: 'agentes', nome: 'Agentes', icon: 'agentes', tag: '20', sub: '14 de área + 6 transversais' },
+  { id: 'especialistas', nome: 'Especialistas', icon: 'espec', tag: '15', sub: 'Time por área · consulta o Córtex e emite artefato' },
+  { id: 'agentes', nome: 'Agentes do núcleo', icon: 'agentes', tag: '20', sub: '14 de área + 6 transversais' },
   { id: 'confrontos', nome: 'Matriz de confronto', icon: 'confronto', tag: '15', sub: 'Cruzamentos entre fontes independentes' },
   { id: 'rotinas', nome: 'Rotinas e entregáveis', icon: 'rotinas', tag: '10', sub: 'Execução comprovada, não declarada' },
   { id: 'integracoes', nome: 'Integrações', icon: 'integra', tag: '16', sub: 'Fontes conectadas ao núcleo' },
@@ -318,7 +324,7 @@ function viewIntegracoes() {
   </div></section>`;
 }
 
-const RENDER = { ceo: viewCEO, conciliacao: viewConciliacao, arquivos: viewArquivos, cadeia: viewCadeia, agentes: viewAgentes, confrontos: viewConfrontos, rotinas: viewRotinas, integracoes: viewIntegracoes };
+const RENDER = { ceo: viewCEO, cortex: viewCortex, conciliacao: viewConciliacao, arquivos: viewArquivos, cadeia: viewCadeia, especialistas: viewEspecialistas, agentes: viewAgentes, confrontos: viewConfrontos, rotinas: viewRotinas, integracoes: viewIntegracoes };
 
 /* ---------- drawer ---------- */
 function openDrawer(html) {
@@ -452,6 +458,29 @@ function drawerAgente(id) {
     <button class="btn" data-act="Agente pausado até nova ordem">Pausar agente</button></footer>`);
 }
 
+/* ---------- especialistas ---------- */
+function abreEspecialista(id) {
+  const d = drawerEspecialista(id);
+  if (!d) return;
+  openDrawer(`<header>${d.cabecalho}<button class="close" data-close aria-label="Fechar">✕</button></header>
+    <div class="content">${d.corpo}</div>
+    <footer>${d.rodape}</footer>`);
+}
+
+function acaoEspecialista(acao, id) {
+  if (acao === 'sobmedida') return toast('Entrevista de novo especialista — disponível na fase 2');
+  const e = ESPECIALISTAS.find(x => x.id === id);
+  if (!e) return;
+  if (acao === 'consultar') {
+    closeDrawer();
+    return toast(`${e.nome} consultou o Córtex · ${e.fontes.length} fontes varridas`);
+  }
+  if (acao === 'artefato') {
+    closeDrawer();
+    return toast(`${e.nome} emitiu: ${e.artefatos[0]}`);
+  }
+}
+
 /* ---------- ações da tela de arquivos ---------- */
 async function acaoArquivo(cmd) {
   if (cmd === 'limpar') { limpar(); return toast('Arquivos descartados'); }
@@ -472,19 +501,23 @@ function nav(id) {
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.view === id));
   $('#main').innerHTML = `<div class="view on">${RENDER[id]()}</div>`;
   $('#main').scrollTop = 0;
+  if (id === 'cortex') ligaCortex(n => openDrawer(drawerNo(n)));
 }
 
 function montaNav() {
-  $('#nav').innerHTML = `<p class="nav-label eyebrow">Núcleo</p>` +
-    VIEWS.map((v, i) => `${i === 3 ? '<p class="nav-label eyebrow">Empresa</p>' : ''}${i === 6 ? '<p class="nav-label eyebrow">Controle</p>' : ''}
+  const GRUPO = { 0: 'Núcleo', 2: 'Financeiro', 4: 'Empresa', 7: 'Controle' };
+  $('#nav').innerHTML =
+    VIEWS.map((v, i) => `${GRUPO[i] ? `<p class="nav-label eyebrow">${GRUPO[i]}</p>` : ''}
       <button data-view="${v.id}" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">${ICON[v.icon]}</svg>
-        ${v.nome}<span class="tag ${v.crit ? 'crit' : ''}">${v.tag}</span>
+        <span class="nm">${v.nome}</span><span class="tag ${v.crit ? 'crit' : ''}">${v.tag}</span>
       </button>`).join('');
   $('#nav').addEventListener('click', e => {
     const b = e.target.closest('button[data-view]');
-    if (b) nav(b.dataset.view);
+    if (b) { nav(b.dataset.view); document.querySelector('.side').classList.remove('on'); }
   });
+  const mb = $('#menuBtn');
+  if (mb) mb.addEventListener('click', () => document.querySelector('.side').classList.toggle('on'));
 }
 
 function liga() {
@@ -495,6 +528,10 @@ function liga() {
   $('#footCusto').textContent = brl(PULSO.custoDia, 2);
 
   $('#main').addEventListener('click', e => {
+    const ac = e.target.closest('[data-acao]');
+    if (ac) { e.stopPropagation(); return acaoEspecialista(ac.dataset.acao, ac.dataset.espec); }
+    const es = e.target.closest('[data-espec]');
+    if (es) return abreEspecialista(es.dataset.espec);
     const caso = e.target.closest('[data-caso]');
     if (caso) return drawerCaso(caso.dataset.caso);
     const et = e.target.closest('[data-etapa]');
@@ -539,6 +576,8 @@ function liga() {
   });
   $('#drawer').addEventListener('click', e => {
     if (e.target.closest('[data-close]')) return closeDrawer();
+    const ac = e.target.closest('[data-acao]');
+    if (ac) return acaoEspecialista(ac.dataset.acao, ac.dataset.espec);
     const a = e.target.closest('[data-act]');
     if (a) { closeDrawer(); toast(a.dataset.act); }
   });

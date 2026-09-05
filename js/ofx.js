@@ -130,12 +130,16 @@ function extraiTransacoes(nos) {
   }
   // fallback: arquivos sem </STMTTRN>
   if (atual && Object.keys(atual).length) txs.push(atual);
-  return txs.map((t, i) => ({
-    ...t,
-    historico: limpaTexto([t.nome, t.memo].filter(Boolean).join(' · ')) || '(sem histórico)',
-    valor: t.valor || 0,
-    idx: i,
-  })).filter(t => t.data && t.valor !== 0);
+  return txs.map((t, i) => {
+    const historico = limpaTexto([t.nome, t.memo].filter(Boolean).join(' · ')) || '(sem histórico)';
+    return {
+      ...t,
+      historico,
+      valor: t.valor || 0,
+      idx: i,
+      sem: normalizaMemo(historico, [t.documento, t.referencia, t.pagadorId].filter(Boolean).join(' ')),
+    };
+  }).filter(t => t.data && t.valor !== 0);
 }
 
 function valorTag(nos, tag) {
@@ -233,6 +237,124 @@ function parseOFX(texto, nomeArquivo) {
   };
 }
 
+/* ---------- normalizacao semantica do historico bancario ---------- */
+
+/*
+ * Regras calibradas contra 17.787 movimentos reais do ATUA, cobrindo
+ * Banco do Brasil, Itau, BTG, Bradesco, Safra e GoFlux/FitBank.
+ * A ordem importa: a primeira regra que casa vira a natureza principal,
+ * as demais ficam em `tags`.
+ */
+const NATUREZAS = [
+  { id: 'estorno',  rot: 'Estorno ou devolucao', re: /\b(ESTORNO|ESTORNAD\w*|DEVOLUC\w*|DEVOLVID\w*|CANCELAMENTO|REEMBOLSO)\b/i },
+  // Atencao ao Bradesco: "REM:" e o remetente (dinheiro entrando) e "DES:"
+  // e o destinatario (dinheiro saindo). Inverter isso custa 142 classificacoes.
+  { id: 'pix_rec',  rot: 'PIX recebido',        re: /\bPIX\b[\s\S]*\bREM:/i, sinal: 1 },
+  { id: 'pix_env',  rot: 'PIX enviado',         re: /\bPIX\b[\s\S]*\bDES:/i, sinal: -1 },
+  { id: 'pix_env', rot: 'PIX enviado',         re: /\bPIX\b[\s\S]*\b(ENV\w*|DEB\w*|SAIDA|PAGAMENTO|PAGTO|PAGO|PARA)\b|\bTRANSFERENCIA\s+(VIA\s+)?PIX\b|\bPAGAMENTOS?\s+PIX\b/i, sinal: -1 },
+  { id: 'pix_rec', rot: 'PIX recebido',        re: /\bPIX\b[\s\S]*\b(REC\w*|CRED\w*|ENTRADA)\b|\bRECEBIMENTO\s+(VIA\s+)?PIX\b|\bENTRADA\s+PIX\b/i, sinal: 1 },
+  { id: 'pix_agend', rot: 'PIX agendado',       re: /\bPIX\b[\s\S]*\bAGENDAMENTO\b/i },
+  { id: 'pix',      rot: 'PIX',                 re: /\bPIX\b/i },
+  { id: 'cobranca', rot: 'Boleto e cobranca',   re: /\b(LIQ|LIQUID)\w*\.?\s*(DE\s+)?COBRAN|TIT\.?\s*COBRAN|BLOQUETO|BOLETO|DUPLICATA|COBRANCA/i },
+  { id: 'recebim',  rot: 'Recebimento de cliente', re: /\bRECEBIMENTOS?\b|\bSISPAG\b|\bCREDITO\s+EM\s+CONTA\b/i, sinal: 1 },
+  // sem sinal: o BB rotula credito recebido como "TED-PAG FORNECEDORES"
+  { id: 'ted',      rot: 'TED, DOC ou TEF',     re: /\b(TED|DOC|TEV|TEF)\b|\bTRANSFERENCIA?\b|\bTRANSF\b/i },
+  { id: 'rendim',   rot: 'Rendimento de aplicacao', re: /\bREND\w*\b|\bREMUNERA|\bRENTAB|\bJUROS\s+CREDIT/i, sinal: 1 },
+  { id: 'aplic',    rot: 'Aplicacao ou resgate', re: /\b(APLIC\w*|RESGATE|CDB|LCI|LCA|POUPANC\w*|FUNDO|RENDA\s+FIXA|INVESTIMENTO|AUTOMATIC\w*\s+APLIC)\b/i },
+  { id: 'imposto',  rot: 'Tributo ou guia',     re: /\b(DARF|DARE|DAS|DAM|GPS|FGTS|GNRE|ICMS|ISS|INSS|SIMPLES|GRU|IPVA|DAE|DPVAT|TRIBUTO|IMPOSTOS?|SEFAZ|PREVIDENC\w*)\b/i, sinal: -1 },
+  { id: 'folha',    rot: 'Folha e pessoal',     re: /\b(SALARIO|FOLHA|RESCIS\w*|FERIAS|VALE|PRO.?LABORE|ADIANT\w*\s+SALAR|13\s*SALARIO)\b/i, sinal: -1 },
+  { id: 'frota',    rot: 'Frota, pedagio e combustivel', re: /\b(SEM\s*PARAR|CONECTCAR|VELOE|MOVE\s*MAIS|IPIRANGA|SHELL|PETROBRAS|POSTO|COMBUSTIVEL|PEDAGIO|ARTERIS|ECORODOVIAS|REPOM|ROADCARD|VOLUS|TRUCKPAG|NSTECH|STRADA\s*PAY|E-?FRETE|TARGET\s*PAY)\b/i },
+  { id: 'consorcio', rot: 'Consorcio',          re: /\bCONSORCIO\b/i, sinal: -1 },
+  { id: 'emprest',  rot: 'Emprestimo ou financiamento', re: /\b(EMPREST\w*|FINANC\w*|CDC|LEASING|CONSIGN\w*|ANTECIP\w*|CAPITAL\s+DE?\s*GIRO|PEAC|FGI|FINAME|DESCONTO\s+DE\s+TITULO\w*|CREDITO\s+ROTATIVO|PRONAMPE|BB\s+GIRO|OPER\w*\s+CREDITO|PARCELA)\b/i },
+  { id: 'cartao',   rot: 'Cartao de credito',   re: /\bCARTAO\b|\bCARTOES\b|\bFATURA\s+CARTAO\b/i, sinal: -1 },
+  { id: 'seguro',   rot: 'Seguro',              re: /\bSEGURO\w*\b|\bAPOLICE\b|\bSINISTRO\b/i, sinal: -1 },
+  { id: 'concess',  rot: 'Concessionaria e utilidades', re: /\b(TELEFONE|CELULAR|VIVO|CLARO|TIM|OI\s|INTERNET|ENERGIA|ENEL|EQUATORIAL|CELG|ELETRO|SANEAGO|CAESB|AGUA|ESGOTO|GAS)\b/i, sinal: -1 },
+  { id: 'tarifa',   rot: 'Tarifa bancaria',     re: /\b(TAR|TARIFA|TAXA|CESTA|PACOTE|MANUTENC\w*|MENSALIDADE|IOF|ENCARGO|ANUIDADE|CUSTAS|DEB\.?\s*SERVICO|DEBITO\s+SERVICO)\b|\bJUROS\b/i, sinal: -1 },
+  { id: 'cheque',   rot: 'Cheque',              re: /CHEQUE|\bCH\.?\s*COMPENS|\bCOMPE\b|\bDEV\s*CH\d|\bCH\d{4,}|\bCHQ\b|\bSEM\s+FUNDOS\b/i },
+  { id: 'capitaliz', rot: 'Titulo de capitalizacao', re: /\bCAPITALIZACAO\b/i, sinal: -1 },
+  { id: 'titulo',   rot: 'Titulo em carteira',  re: /\bTBI\b|\bPFOR\s+TIT\b|\bDESC\s+DP\b|\bJR\s+MORA\b/i },
+  { id: 'debauto',  rot: 'Debito automatico',   re: /\b(DEB(ITO)?\.?\s*AUT|DEBITO\s+PROGRAMADO|CONVENIO)\b/i, sinal: -1 },
+  { id: 'pagto',    rot: 'Pagamento a fornecedor', re: /\bPAG(AMENTOS?|TO|AMENTO)?\b.*\b(FORNEC\w*|ELETRON\w*|CONTA)\b|\bPAG\s+FORNEC/i },
+];
+
+// Alguns extratos do BB chegam com o historico corrompido por repeticao
+// ("CHEQUEEQUEEQUE COMPENSADO"). Colapsa o pedaco repetido antes de classificar.
+function reparaMemo(txt) {
+  let s = txt;
+  // so letras: colapsar digitos destruiria numero de conta e EndToEnd
+  for (let i = 0; i < 3; i++) s = s.replace(/([A-Za-z]{3,8})\1+/g, '$1');
+  return s;
+}
+
+// exige que o bloco de 14 digitos esteja isolado, senao um "nosso numero"
+// de 17 digitos e confundido com CNPJ e a chave forte se perde
+const RE_CNPJ = /(?<!\d)(\d{2})[.\s]?(\d{3})[.\s]?(\d{3})[\/\s]?(\d{4})[-\s]?(\d{2})(?!\d)/;
+const RE_CPF = /(?<!\d)(\d{3})[.\s]?(\d{3})[.\s]?(\d{3})[-\s]?(\d{2})(?!\d)/;
+const RE_E2E = /\bE\d{8}[0-9A-Z]{20,}\b/i;
+
+const RUIDO_NOME = /^(PIX|TED|DOC|TEV|CRED|CREDITO|DEB|DEBITO|TRANSF|TRANSFERENCIA|LIQ|LIQUIDACAO|COBRANCA|RECEBIMENTO|PAGAMENTO|PAGTO|REF|CTA|AG|CC|BCO|BANCO|ENVIADO|RECEBIDO|MESMA|TITULARIDADE|OUTRA|INST|DE|DA|DO|EM|PARA|POR|VIA|NR|NUM)$/i;
+
+function normalizaMemo(bruto, extra) {
+  const txt = limpaTexto(`${bruto || ''} ${extra || ''}`);
+  const up = reparaMemo(txt.toUpperCase());
+
+  const tags = NATUREZAS.filter(n => n.re.test(up));
+  const natureza = tags[0] || null;
+
+  const mC = up.match(RE_CNPJ);
+  const cnpj = mC ? `${mC[1]}.${mC[2]}.${mC[3]}/${mC[4]}-${mC[5]}` : null;
+  const mP = !cnpj ? up.match(RE_CPF) : null;
+  const cpf = mP ? `${mP[1]}.${mP[2]}.${mP[3]}-${mP[4]}` : null;
+  const mE = up.match(RE_E2E);
+  const e2e = mE ? mE[0].toUpperCase() : null;
+
+  const semDoc = up.replace(RE_CNPJ, ' ').replace(RE_CPF, ' ').replace(RE_E2E, ' ');
+  const blocos = (semDoc.match(/(?<!\d)\d{6,17}(?!\d)/g) || [])
+    .filter(b => !/^(19|20)\d{6}$/.test(b));
+  const nossoNumero = blocos.sort((a, b) => b.length - a.length)[0] || null;
+
+  const contraparte = up
+    .replace(RE_CNPJ, ' ').replace(RE_CPF, ' ').replace(RE_E2E, ' ')
+    .replace(/\d+/g, ' ')
+    .split(/[\s\-\/.,]+/)
+    .filter(p => p.length > 2 && !RUIDO_NOME.test(p))
+    .slice(0, 6).join(' ').trim() || null;
+
+  return {
+    natureza: natureza ? natureza.id : 'outros',
+    naturezaRotulo: natureza ? natureza.rot : 'Nao classificado',
+    tags: tags.map(t => t.id),
+    // so o sinal da natureza principal vale: herdar de uma tag secundaria
+    // faz um estorno de PIX enviado parecer incoerente por ser credito
+    sinalEsperado: (natureza && natureza.sinal) || null,
+    cnpj, cpf, e2e, nossoNumero, contraparte,
+    chaveForte: e2e || nossoNumero || null,
+  };
+}
+
+function diagnosticoSemantico(transacoes) {
+  const n = transacoes.length || 1;
+  const cont = {};
+  let comChave = 0, comCnpj = 0, comContraparte = 0, sinalIncoerente = 0;
+  transacoes.forEach(t => {
+    const s = t.sem || {};
+    const rot = s.naturezaRotulo || 'Nao classificado';
+    cont[rot] = (cont[rot] || 0) + 1;
+    if (s.chaveForte) comChave++;
+    if (s.cnpj || s.cpf) comCnpj++;
+    if (s.contraparte) comContraparte++;
+    if (s.sinalEsperado && Math.sign(t.valor) !== s.sinalEsperado) sinalIncoerente++;
+  });
+  return {
+    porNatureza: Object.entries(cont).sort((a, b) => b[1] - a[1]),
+    chaveForte: comChave, pctChaveForte: comChave / n,
+    documento: comCnpj, pctDocumento: comCnpj / n,
+    contraparte: comContraparte, pctContraparte: comContraparte / n,
+    naoClassificados: cont['Nao classificado'] || 0,
+    sinalIncoerente,
+  };
+}
+
 /* ---------- leitura do extrato do ATUA (CSV / TXT) ---------- */
 
 function detectaSeparador(linha) {
@@ -282,67 +404,164 @@ function valorBR(s) {
 }
 
 const ACHA = {
-  data: /^(data|dt|data.?(lanc|mov|pag|receb|credito|baixa|compensacao))/i,
-  valor: /^(valor|vlr|montante|total|valor.?(pago|recebido|liquido|baixa))/i,
-  historico: /^(hist|descric|complemento|observ|memo|favorecido|sacado|cliente|fornecedor|nome)/i,
-  documento: /^(doc|documento|titulo|numero|n.?titulo|nosso.?numero|ctrc|nf|cte)/i,
-  tipo: /^(tipo|natureza|opera[cç][aã]o|d\s?[\/x-]\s?c|deb\s?[\/x-]?\s?cred|debito.?credito)$/i,
+  data: /^(data|dt|emissao|vencimento|competencia|data.?(lanc|mov|pag|receb|credito|baixa|compensacao|quitacao|liquidacao))/i,
+  valor: /^(valor|vlr|montante|v\.?\s?total|valor.?(pago|recebido|liquido|baixa|titulo|documento|bruto))/i,
+  debito: /^(debito|deb|saida|pagamento|pago|valor.?debito)$/i,
+  credito: /^(credito|cred|entrada|recebimento|recebido|valor.?credito)$/i,
+  historico: /^(hist|descric|complemento|observ|memo|favorecido|sacado|cliente|fornecedor|razao|nome|participante|beneficiario|pagador)/i,
+  documento: /^(doc|documento|titulo|numero|num|n.?titulo|nosso.?numero|nossonumero|ctrc|ct.?e|nf|nfe|nfse|duplicata|parcela|chave)/i,
+  tipo: /^(tipo|natureza|opera[cç][aã]o|d\s?[\/x-]\s?c|deb\s?[\/x-]?\s?cred|debito.?credito|sinal|especie)$/i,
+  conta: /^(conta|banco|c.?corrente|conta.?corrente|caixa|portador|agencia)/i,
+  centro: /^(centro|c\.?custo|centro.?de.?custo|filial|unidade|departamento)/i,
 };
 
+const CAMPOS_ATUA = ['data', 'valor', 'debito', 'credito', 'historico', 'documento', 'tipo', 'conta', 'centro'];
+
+/** Linhas de fechamento que o relatório imprime e não são lançamento. */
+const LINHA_TOTAL = /^\s*(total|totais|subtotal|soma|saldo|resumo|acumulado|geral|-{3,}|={3,})/i;
+
+function normalizaCabecalho(x) {
+  return String(x || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[()\[\]]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+}
+
 /**
- * Lê um extrato/relatório do ATUA em CSV ou texto delimitado.
- * Detecta cabeçalho e colunas automaticamente.
+ * Lê um relatório do ATUA em CSV, TXT delimitado ou texto colado.
+ * Detecta cabeçalho e colunas sozinho; aceita mapa manual quando a
+ * detecção automática erra — é isso que permite calibrar sem mexer no código.
+ *
+ * opts.mapa = { data: 2, valor: 5, historico: 3, ... } (índices de coluna)
+ * opts.sep  = separador forçado
+ * opts.linhaCabecalho = índice da linha de cabeçalho
  */
-function parseATUA(texto, nomeArquivo) {
-  const linhas = texto.replace(/\r/g, '').split('\n').filter(l => l.trim());
-  if (linhas.length < 2) throw new Error('Arquivo do ATUA sem linhas suficientes.');
-
-  const sep = detectaSeparador(linhas[0]);
-
-  // acha a linha de cabeçalho (primeira que tem pelo menos data e valor)
-  let iCab = -1, cols = null;
-  for (let i = 0; i < Math.min(linhas.length, 15); i++) {
-    const c = quebraLinha(linhas[i], sep).map(x => x.toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
-    const temData = c.some(x => ACHA.data.test(x));
-    const temValor = c.some(x => ACHA.valor.test(x));
-    if (temData && temValor) { iCab = i; cols = c; break; }
+function parseATUA(texto, nomeArquivo, opts = {}) {
+  if (/^PK\x03\x04/.test(texto) || /\x00/.test(texto.slice(0, 400)) || /^%PDF/.test(texto)) {
+    throw new Error('Este arquivo é XLSX, PDF ou binário. No ATUA, exporte o relatório como CSV ou TXT delimitado.');
   }
-  if (iCab < 0) throw new Error('Não localizei as colunas de data e valor. Exporte o relatório com cabeçalho.');
+  const cru = texto.replace(/\r/g, '').split('\n');
+  const linhas = cru.filter(l => l.trim());
+  if (linhas.length < 2) throw new Error('Arquivo do ATUA sem linhas suficientes. Exporte o relatório em CSV com cabeçalho.');
 
+
+  // Escolhe o separador pelo bloco mais largo e mais repetido, ignorando o
+  // cabecalho do relatorio. Sem isso, uma virgula solta num titulo vence a tabulacao.
+  const sep = opts.sep || (() => {
+    const cand = [';', '\t', '|', ','];
+    let melhor = ';', score = 0;
+    cand.forEach(c => {
+      const larguras = linhas.slice(0, 25)
+        .map(l => quebraLinha(l, c).length).filter(n => n >= 2);
+      if (!larguras.length) return;
+      const cont = {};
+      larguras.forEach(n => { cont[n] = (cont[n] || 0) + 1; });
+      const [moda, vezes] = Object.entries(cont)
+        .sort((a, b) => (b[1] - a[1]) || (+b[0] - +a[0]))[0];
+      const s = +moda * vezes;
+      if (s > score) { score = s; melhor = c; }
+    });
+    return melhor;
+  })();
+
+  // cabeçalho: aceita data + (valor OU débito/crédito)
+  let iCab = opts.linhaCabecalho ?? -1, cols = null;
+  if (iCab >= 0) {
+    cols = quebraLinha(linhas[iCab], sep).map(normalizaCabecalho);
+  } else {
+    for (let i = 0; i < Math.min(linhas.length, 30); i++) {
+      const c = quebraLinha(linhas[i], sep).map(normalizaCabecalho);
+      if (c.length < 2) continue;
+      const temData = c.some(x => ACHA.data.test(x));
+      const temValor = c.some(x => ACHA.valor.test(x))
+        || (c.some(x => ACHA.debito.test(x)) && c.some(x => ACHA.credito.test(x)));
+      if (temData && temValor) { iCab = i; cols = c; break; }
+    }
+  }
+  if (iCab < 0) {
+    const amostra = linhas.slice(0, 3).map(l => l.slice(0, 90)).join(' | ');
+    throw new Error(`Não localizei as colunas de data e valor. Exporte o relatório com a linha de cabeçalho. Início do arquivo: ${amostra}`);
+  }
+
+  // mapeamento: automático, sobreposto pelo manual quando houver
   const idx = {};
-  ['data', 'valor', 'historico', 'documento', 'tipo'].forEach(campo => {
-    idx[campo] = cols.findIndex(c => ACHA[campo].test(c));
+  CAMPOS_ATUA.forEach(campo => { idx[campo] = cols.findIndex(c => ACHA[campo].test(c)); });
+  // "valor" não pode roubar a coluna de débito ou crédito
+  if (idx.debito >= 0 && idx.credito >= 0 && idx.valor === idx.debito) idx.valor = -1;
+  Object.entries(opts.mapa || {}).forEach(([k, v]) => {
+    if (CAMPOS_ATUA.includes(k)) idx[k] = (v === '' || v == null) ? -1 : +v;
   });
 
-  const linhs = [];
+  const temParDebCred = idx.debito >= 0 && idx.credito >= 0;
+  if (idx.valor < 0 && !temParDebCred) {
+    throw new Error('Encontrei a data mas não a coluna de valor. Use o mapeamento manual na tela para apontar qual coluna é o valor.');
+  }
+
+  const lancs = [];
+  const descartadas = [];
   for (let i = iCab + 1; i < linhas.length; i++) {
-    const c = quebraLinha(linhas[i], sep);
+    const linha = linhas[i];
+    if (LINHA_TOTAL.test(linha)) { descartadas.push({ i, motivo: 'linha de total', txt: linha.slice(0, 60) }); continue; }
+    const c = quebraLinha(linha, sep);
     if (c.length < 2) continue;
+
     const data = dataBR(c[idx.data]);
-    let valor = valorBR(c[idx.valor]);
-    if (!data || isNaN(valor)) continue;
-    const tipo = idx.tipo >= 0 ? (c[idx.tipo] || '') : '';
-    if (/^(d|deb|debito|pagamento|saida)/i.test(tipo.trim()) && valor > 0) valor = -valor;
-    linhs.push({
-      data,
-      valor,
-      historico: limpaTexto(idx.historico >= 0 ? c[idx.historico] : '') || '(sem histórico)',
-      documento: limpaTexto(idx.documento >= 0 ? c[idx.documento] : ''),
-      idx: linhs.length,
+    if (!data) { descartadas.push({ i, motivo: 'data ilegível', txt: (c[idx.data] || linha).slice(0, 40) }); continue; }
+
+    let valor;
+    if (temParDebCred) {
+      const d = valorBR(c[idx.debito]);
+      const cr = valorBR(c[idx.credito]);
+      const vd = isNaN(d) ? 0 : Math.abs(d);
+      const vc = isNaN(cr) ? 0 : Math.abs(cr);
+      if (!vd && !vc) { descartadas.push({ i, motivo: 'sem valor', txt: linha.slice(0, 40) }); continue; }
+      valor = vc - vd;
+    } else {
+      valor = valorBR(c[idx.valor]);
+      if (isNaN(valor)) { descartadas.push({ i, motivo: 'valor ilegível', txt: (c[idx.valor] || '').slice(0, 40) }); continue; }
+      const tipo = idx.tipo >= 0 ? String(c[idx.tipo] || '').trim() : '';
+      if (/^(d|deb|debito|pagamento|paga|saida|s)$/i.test(tipo) && valor > 0) valor = -valor;
+      if (/^(c|cred|credito|recebimento|receb|entrada|e)$/i.test(tipo) && valor < 0) valor = Math.abs(valor);
+    }
+    if (valor === 0) { descartadas.push({ i, motivo: 'valor zero', txt: linha.slice(0, 40) }); continue; }
+
+    const historico = limpaTexto(idx.historico >= 0 ? c[idx.historico] : '') || '(sem histórico)';
+    const documento = limpaTexto(idx.documento >= 0 ? c[idx.documento] : '');
+    lancs.push({
+      data, valor, historico, documento,
+      conta: idx.conta >= 0 ? limpaTexto(c[idx.conta]) : '',
+      centro: idx.centro >= 0 ? limpaTexto(c[idx.centro]) : '',
+      idx: lancs.length,
+      linhaArquivo: i + 1,
+      sem: normalizaMemo(historico, documento),
     });
   }
-  if (!linhs.length) throw new Error('Nenhuma linha válida encontrada no arquivo do ATUA.');
+
+  if (!lancs.length) {
+    throw new Error(`Li o cabeçalho mas nenhuma linha virou lançamento (${descartadas.length} descartadas). Confira o mapeamento das colunas na tela.`);
+  }
 
   return {
     arquivo: nomeArquivo || 'atua.csv',
-    colunas: Object.fromEntries(Object.entries(idx).map(([k, v]) => [k, v >= 0 ? cols[v] : null])),
-    lancamentos: linhs,
+    separador: sep === '\t' ? 'tabulação' : sep,
+    linhaCabecalho: iCab,
+    cabecalho: cols,
+    mapa: idx,
+    colunas: Object.fromEntries(CAMPOS_ATUA.map(k => [k, idx[k] >= 0 ? cols[idx[k]] : null])),
+    naoMapeadas: cols.filter((c, i) => c && !Object.values(idx).includes(i)),
+    modoValor: temParDebCred ? 'colunas separadas de débito e crédito' : 'coluna única de valor',
+    descartadas,
+    lancamentos: lancs,
     resumo: {
-      total: linhs.length,
-      liquido: linhs.reduce((a, l) => a + l.valor, 0),
-      inicio: linhs.reduce((a, l) => (!a || l.data < a ? l.data : a), null),
-      fim: linhs.reduce((a, l) => (!a || l.data > a ? l.data : a), null),
+      total: lancs.length,
+      lidas: linhas.length - iCab - 1,
+      descartadas: descartadas.length,
+      liquido: lancs.reduce((a, l) => a + l.valor, 0),
+      creditos: lancs.filter(l => l.valor > 0).reduce((a, l) => a + l.valor, 0),
+      debitos: lancs.filter(l => l.valor < 0).reduce((a, l) => a + l.valor, 0),
+      inicio: lancs.reduce((a, l) => (!a || l.data < a ? l.data : a), null),
+      fim: lancs.reduce((a, l) => (!a || l.data > a ? l.data : a), null),
+      comDocumento: lancs.filter(l => l.documento).length,
     },
   };
 }
@@ -350,6 +569,7 @@ function parseATUA(texto, nomeArquivo) {
 /* ---------- motor de conciliação ---------- */
 
 const REGRAS = [
+  { id: 'R0', nome: 'Chave forte', desc: 'EndToEnd do PIX, nosso número ou CNPJ' },
   { id: 'R1', nome: 'Par exato', desc: 'valor + data + documento' },
   { id: 'R2', nome: 'Par por tolerância', desc: '±R$ 0,05 e janela de D+2' },
   { id: 'R3', nome: 'Agrupamento', desc: 'n lançamentos = 1 crédito' },
@@ -373,6 +593,43 @@ function conciliar(banco, atua, opts = {}) {
     b.casado = regra; a.casado = regra;
     pares.push({ regra, banco: b, atua: a, nota: nota || '' });
   };
+
+  /* R0 — chave forte extraída do histórico: EndToEnd, nosso número ou CNPJ + valor.
+     É a única regra que casa sem depender de data, porque o identificador é único. */
+  const indiceChave = new Map();
+  A.forEach(a => {
+    const chaves = new Set();
+    if (a.sem && a.sem.chaveForte) chaves.add(a.sem.chaveForte);
+    if (a.sem && a.sem.e2e) chaves.add(a.sem.e2e);
+    if (a.documento) chaves.add(a.documento.replace(/\D/g, ''));
+    chaves.forEach(k => {
+      if (!k || k.length < 6) return;
+      if (!indiceChave.has(k)) indiceChave.set(k, []);
+      indiceChave.get(k).push(a);
+    });
+  });
+
+  B.forEach(b => {
+    if (b.casado || !b.sem) return;
+    const cand = [b.sem.e2e, b.sem.chaveForte, b.sem.nossoNumero].filter(k => k && k.length >= 6);
+    for (const k of cand) {
+      const lista = (indiceChave.get(k) || []).filter(a => !a.casado);
+      if (!lista.length) continue;
+      const exato = lista.find(a => Math.abs(a.valor - b.valor) < 0.005);
+      const alvo = exato || (lista.length === 1 && Math.abs(lista[0].valor - b.valor) <= tolValor ? lista[0] : null);
+      if (alvo) {
+        const rot = b.sem.e2e === k ? `EndToEnd ${k.slice(0, 12)}…` : `identificador ${k}`;
+        casa(b, alvo, 'R0', rot);
+        return;
+      }
+    }
+    // CNPJ do pagador + valor exato dentro da janela
+    const doc = b.sem.cnpj || b.sem.cpf;
+    if (!doc) return;
+    const porDoc = A.filter(a => !a.casado && a.sem && (a.sem.cnpj === doc || a.sem.cpf === doc)
+      && Math.abs(a.valor - b.valor) < 0.005 && diasEntre(a.data, b.data) <= tolDias);
+    if (porDoc.length === 1) casa(b, porDoc[0], 'R0', `mesmo CNPJ ${doc}`);
+  });
 
   /* R1 — valor idêntico, mesma data e documento coincidente */
   B.forEach(b => {
@@ -583,4 +840,7 @@ function coberturaArquivos(arquivos) {
   return { contas, alertas };
 }
 
-window.CortexOFX = { parseOFX, parseATUA, conciliar, coberturaArquivos, REGRAS, iso, br, similaridade };
+window.CortexOFX = {
+  parseOFX, parseATUA, conciliar, coberturaArquivos, REGRAS, iso, br, similaridade,
+  normalizaMemo, diagnosticoSemantico, CAMPOS_ATUA, NATUREZAS,
+};
