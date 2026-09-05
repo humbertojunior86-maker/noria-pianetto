@@ -1587,3 +1587,305 @@ a.ceo-dia:hover { border-color: var(--linha-3); background: var(--painel-alto); 
   .ritmo-cab .ritmo-nota { margin-left: 0; text-align: left; }
   .ritmo-pulso { gap: var(--e-4); }
 }
+
+/* ==========================================================================
+   Mural do saguão — painel de parede
+   --------------------------------------------------------------------------
+   Escala de leitura a três metros: tudo dimensionado em vw com piso e teto,
+   para caber num notebook durante a conferência e crescer numa TV de 55".
+   Nenhuma cor nova: só os tokens do sistema.
+   ========================================================================== */
+body.modo-saguao {
+  overflow: hidden;
+  cursor: none;
+}
+
+.mural {
+  --m: 1;  /* fator de parede: mural.js recalcula pela largura real */
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: calc(var(--e-4) * var(--m));
+  padding: calc(var(--e-6) * var(--m)) calc(var(--e-10) * var(--m));
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(80, 214, 188, .07), transparent 60%),
+    var(--fundo);
+  color: var(--tinta);
+  overflow: hidden;
+}
+
+.mural-topo,
+.mural-pe {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--e-4) * var(--m));
+}
+
+.mural-topo .vao,
+.mural-pe .vao { flex: 1; }
+
+.mural-marca { display: flex; align-items: center; gap: calc(var(--e-3) * var(--m)); }
+.mural-marca h1 { font-size: calc(var(--t-2xl) * var(--m)); margin: 0; letter-spacing: .12em; }
+.mural-marca span {
+  display: block;
+  font-family: var(--mono);
+  font-size: calc(var(--t-mini) * var(--m));
+  letter-spacing: var(--letra-extra);
+  text-transform: uppercase;
+  color: var(--tinta-3);
+}
+
+.mural-relogio { text-align: right; }
+.mural-relogio .hora {
+  font-family: var(--display);
+  font-size: calc(var(--t-3xl) * var(--m));
+  font-weight: var(--peso-display);
+  line-height: 1;
+  letter-spacing: var(--letra-apertada);
+}
+.mural-relogio .dia {
+  font-size: calc(var(--t-peq) * var(--m));
+  color: var(--tinta-3);
+}
+
+.mural-corpo {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: calc(var(--e-4) * var(--m));
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ----- selos de topo ----- */
+.mural-linha-selos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: calc(var(--e-5) * var(--m));
+}
+.mural-selo {
+  background: var(--painel);
+  border: 1px solid var(--linha-2);
+  border-radius: var(--raio-lg);
+  padding: calc(var(--e-5) * var(--m)) calc(var(--e-6) * var(--m));
+}
+.mural-selo-n {
+  font-family: var(--display);
+  font-weight: var(--peso-display);
+  font-size: calc(46px * var(--m));
+  line-height: 1;
+  letter-spacing: var(--letra-apertada);
+  background: var(--cromo-metal);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.mural-linha-selos .mural-selo:first-child .mural-selo-n {
+  background: none;
+  color: var(--acento);
+}
+.mural-selo-r {
+  margin-top: calc(var(--e-2) * var(--m));
+  font-size: calc(var(--t-md) * var(--m));
+  color: var(--tinta-2);
+}
+
+/* ----- blocos ----- */
+.mural-bloco {
+  background: var(--painel);
+  border: 1px solid var(--linha-2);
+  border-radius: var(--raio-lg);
+  padding: calc(var(--e-5) * var(--m)) calc(var(--e-6) * var(--m));
+  min-height: 0;
+}
+.mural-bloco h2 {
+  margin: 0;
+  font-size: calc(var(--t-lg) * var(--m));
+  letter-spacing: var(--letra-apertada);
+}
+.mural-sub {
+  margin: calc(var(--e-1) * var(--m)) 0 calc(var(--e-4) * var(--m));
+  font-size: calc(var(--t-peq) * var(--m));
+  color: var(--tinta-3);
+}
+.mural-vazio {
+  font-size: calc(var(--t-peq) * var(--m));
+  color: var(--tinta-3);
+}
+.mural-duas {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: calc(var(--e-5) * var(--m));
+  min-height: 0;
+}
+
+.mural-duas > .mural-bloco {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ----- ritmo mensal ----- */
+.mural-ritmo {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: end;
+  gap: calc(var(--e-2) * var(--m));
+  height: calc(118px * var(--m));
+}
+.mural-barra {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: calc(var(--e-1) * var(--m));
+  height: 100%;
+}
+.mural-barra-v {
+  font-family: var(--mono);
+  font-size: calc(var(--t-mini) * var(--m));
+  color: var(--tinta-3);
+}
+.mural-barra-t {
+  width: 100%;
+  border-radius: calc(var(--raio-min) * var(--m)) calc(var(--raio-min) * var(--m)) 0 0;
+  background: linear-gradient(180deg, var(--acento), rgba(80, 214, 188, .22));
+}
+.mural-barra.parcial .mural-barra-t {
+  background: repeating-linear-gradient(
+    135deg, rgba(80, 214, 188, .40) 0 6px, rgba(80, 214, 188, .14) 6px 12px);
+}
+.mural-barra-m {
+  font-family: var(--mono);
+  font-size: calc(var(--t-mini) * var(--m));
+  color: var(--tinta-3);
+  text-transform: uppercase;
+  letter-spacing: var(--letra-larga);
+}
+
+/* ----- equipe por área ----- */
+.mural-areas {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: calc(var(--e-4) * var(--m)) calc(var(--e-5) * var(--m));
+}
+.mural-area h3 {
+  margin: 0 0 calc(var(--e-2) * var(--m));
+  font-family: var(--mono);
+  font-size: calc(var(--t-mini) * var(--m));
+  font-weight: var(--peso-medio);
+  letter-spacing: var(--letra-larga);
+  text-transform: uppercase;
+  color: var(--tinta-3);
+}
+.mural-gente { display: flex; flex-direction: column; gap: calc(var(--e-1) * var(--m)); }
+.mural-pessoa { display: flex; align-items: center; gap: calc(var(--e-2) * var(--m)); }
+.mural-pessoa .ponto {
+  width: calc(8px * var(--m));
+  height: calc(8px * var(--m));
+  border-radius: 50%;
+  background: var(--tinta-4);
+  flex: none;
+}
+.mural-pessoa.viva .ponto {
+  background: var(--acento);
+  box-shadow: 0 0 calc(10px * var(--m)) var(--acento-linha);
+}
+.mural-pessoa.agora .ponto { animation: mural-pulsa 1.6s ease-in-out infinite; }
+.mural-pessoa .nome {
+  font-size: calc(var(--t-base) * var(--m));
+  color: var(--tinta-2);
+}
+.mural-pessoa.viva .nome { color: var(--tinta); }
+
+@keyframes mural-pulsa {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.6); opacity: .5; }
+}
+
+/* ----- agenda do dia ----- */
+.mural-agenda { display: flex; flex-direction: column; gap: calc(var(--e-2) * var(--m)); }
+.mural-rotina {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: calc(var(--e-3) * var(--m));
+  padding: calc(var(--e-2) * var(--m)) calc(var(--e-3) * var(--m));
+  border-radius: var(--raio);
+  background: var(--painel-fundo);
+  border-left: calc(3px * var(--m)) solid var(--tinta-4);
+}
+.mural-rotina.feito { border-left-color: var(--ok); }
+.mural-rotina.atrasado { border-left-color: var(--atencao); }
+.mural-rotina .h {
+  font-family: var(--mono);
+  font-size: calc(var(--t-peq) * var(--m));
+  color: var(--tinta-3);
+}
+.mural-rotina .n { font-size: calc(var(--t-base) * var(--m)); }
+.mural-rotina .e {
+  font-family: var(--mono);
+  font-size: calc(var(--t-mini) * var(--m));
+  text-transform: uppercase;
+  letter-spacing: var(--letra-larga);
+  color: var(--tinta-3);
+}
+.mural-rotina.feito .e { color: var(--ok); }
+.mural-rotina.atrasado .e { color: var(--atencao); }
+
+.mural-numeros {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: calc(var(--e-3) * var(--m));
+  margin-top: calc(var(--e-4) * var(--m));
+  padding-top: calc(var(--e-3) * var(--m));
+  border-top: 1px solid var(--linha);
+}
+.mural-numeros b {
+  display: block;
+  font-family: var(--display);
+  font-size: calc(var(--t-xl) * var(--m));
+  line-height: 1.1;
+  color: var(--tinta);
+}
+.mural-numeros span {
+  font-size: calc(var(--t-mini) * var(--m));
+  line-height: var(--altura-media);
+  color: var(--tinta-3);
+}
+
+/* ----- faixa de regra ----- */
+.mural-regra {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--e-5) * var(--m));
+  padding: calc(var(--e-4) * var(--m));
+  border-radius: var(--raio-lg);
+  border: 1px solid var(--acento-linha);
+  background: var(--acento-fundo);
+  font-size: calc(var(--t-md) * var(--m));
+  color: var(--tinta);
+  text-align: center;
+}
+.mural-regra i {
+  width: calc(5px * var(--m));
+  height: calc(5px * var(--m));
+  border-radius: 50%;
+  background: var(--acento);
+  flex: none;
+}
+
+.mural-pe {
+  font-family: var(--mono);
+  font-size: calc(var(--t-mini) * var(--m));
+  letter-spacing: var(--letra-larga);
+  text-transform: uppercase;
+  color: var(--tinta-4);
+}
+
+@media (max-width: 1100px) {
+  .mural-duas,
+  .mural-areas { grid-template-columns: 1fr; }
+  .mural-linha-selos { grid-template-columns: 1fr; }
+}

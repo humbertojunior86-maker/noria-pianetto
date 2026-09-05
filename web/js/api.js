@@ -95,6 +95,7 @@ export const ceo = (forcar) => pedir('/ceo' + (forcar ? '?forcar=true' : ''));
    números do ERP mudam de minuto a minuto, o dia da NÓRIA muda de hora em hora
    — e a faixa do ritmo se recarrega sozinha sem redesenhar a tela inteira. */
 export const agenda = () => pedir('/agenda');
+export const saguao = () => pedir('/saguao');
 export const evidencia = (id) => pedir(`/evidencias/${id}`);
 
 /* ------------------------------------------------------------- comandos --- */

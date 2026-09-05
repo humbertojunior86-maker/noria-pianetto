@@ -36,6 +36,17 @@ def main() -> None:
             "senha_hash": senha(os.environ.get("NORIA_SENHA_INICIAL", "pianetto")),
             "papel": "ceo", "ativo": 1, "criado_em": bd.agora()})
 
+    # Modo saguão: usuário só de exibição. O painel da parede fica visível para
+    # cliente e visitante, então esta conta não enxerga dinheiro, nome de
+    # cliente nem nada da Sala do CEO — a própria API recusa (ver api/main.py).
+    if not bd.linha("SELECT id FROM usuario WHERE email=?",
+                    ("saguao@pianetto.com.br",)):
+        bd.inserir("usuario", {
+            "empresa_id": EMPRESA_ID, "nome": "Painel do saguão",
+            "email": "saguao@pianetto.com.br",
+            "senha_hash": senha(os.environ.get("NORIA_SENHA_SAGUAO", "saguao")),
+            "papel": "saguao", "ativo": 1, "criado_em": bd.agora()})
+
     # Alçada: sem isto, nada de impacto executa sozinho.
     if not bd.linha("SELECT id FROM alcada WHERE empresa_id=?", (EMPRESA_ID,)):
         for tipo, ate, papel, auto in [

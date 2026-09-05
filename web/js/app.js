@@ -4,6 +4,7 @@ import * as api from './api.js';
 import { el, juntar, limpar, icone, logo, carregando, erro } from './ui.js';
 import * as f from './fmt.js';
 import { abertura, pular, DURACAO } from './abertura.js';
+import { mural } from './mural.js';
 
 /* ------------------------------------------------------------------ tema --- */
 const CHAVE_TEMA = 'noria.tema';
@@ -325,19 +326,37 @@ function rodarAbertura(aoTerminar, sobreposta = false) {
 
 /* ----------------------------------------------------------------- boot --- */
 async function aplicacao() {
+  // Quem é o usuário decide qual sistema sobe. A conta do saguão abre o mural
+  // e nada mais: sem menu, sem rota, sem pulso de eventos. Mesmo que alguém
+  // digite #/ceo na barra, não há tela para desenhar — e a API recusaria.
+  let quemE = null;
+  try {
+    quemE = await api.eu();
+  } catch (e) {
+    if (e.status === 401) return;
+    console.error(e);
+  }
+
+  if (quemE && quemE.usuario && quemE.usuario.papel === 'saguao') {
+    ctx.usuario = quemE.usuario;
+    ctx.empresa = quemE.empresa;
+    limpar(document.body);
+    document.body.classList.add('modo-saguao');
+    document.title = 'NÓRIA · Pianetto Transportes';
+    document.body.appendChild(mural());
+    vigiarOcioso();
+    return;
+  }
+
   limpar(document.body);
   document.body.appendChild(casca());
   window.addEventListener('hashchange', desenharTela);
 
-  try {
-    const d = await api.eu();
-    ctx.usuario = d.usuario;
-    ctx.empresa = d.empresa;
-    document.getElementById('quem').textContent = `${d.usuario.nome} · ${d.empresa.nome.split(' ')[0]}`;
-    document.getElementById('quem').title = `${d.usuario.papel} · ${d.empresa.nome} · CNPJ ${d.empresa.cnpj}`;
-  } catch (e) {
-    if (e.status === 401) return;
-    console.error(e);
+  if (quemE) {
+    ctx.usuario = quemE.usuario;
+    ctx.empresa = quemE.empresa;
+    document.getElementById('quem').textContent = `${quemE.usuario.nome} · ${quemE.empresa.nome.split(' ')[0]}`;
+    document.getElementById('quem').title = `${quemE.usuario.papel} · ${quemE.empresa.nome} · CNPJ ${quemE.empresa.cnpj}`;
   }
 
   desenharTela();

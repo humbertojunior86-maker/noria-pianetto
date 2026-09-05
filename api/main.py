@@ -14,7 +14,8 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Header, Query  # noqa: E402
+from fastapi import (Body, Depends, FastAPI, HTTPException, Header,       # noqa: E402
+                     Query, Request)
 from fastapi.responses import FileResponse                                # noqa: E402
 from fastapi.staticfiles import StaticFiles                               # noqa: E402
 
@@ -30,7 +31,18 @@ def _senha(p: str) -> str:
 
 
 # --------------------------------------------------------------------- sessão
-def sessao(authorization: str = Header(default="")) -> dict:
+# O painel do saguão fica numa parede à vista de cliente e de visitante. A
+# conta que o abre não pode chegar em dinheiro, nome de cliente ou decisão
+# pendente — e a recusa mora aqui, no único portão por onde toda rota passa.
+# Guardar isso só na interface seria fingir controle: bastaria trocar o
+# endereço no navegador.
+# /api/agentes entra porque a abertura desenha o quadro real de agentes, e ele
+# não contém dinheiro nem nome de terceiro — só quem existe e o que cada um
+# ainda não consegue fazer.
+ROTAS_DO_SAGUAO = {"/api/eu", "/api/saguao", "/api/agentes"}
+
+
+def sessao(request: Request, authorization: str = Header(default="")) -> dict:
     token = authorization.replace("Bearer ", "").strip()
     if not token:
         raise HTTPException(401, "sem credencial")
@@ -38,6 +50,8 @@ def sessao(authorization: str = Header(default="")) -> dict:
     if not s or s["expira_em"] < bd.agora():
         raise HTTPException(401, "sessão expirada")
     u = bd.linha("SELECT * FROM usuario WHERE id=?", (s["usuario_id"],))
+    if u["papel"] == "saguao" and request.url.path not in ROTAS_DO_SAGUAO:
+        raise HTTPException(403, "o painel do saguão não tem acesso a esta área")
     return {"usuario": u, "empresa_id": s["empresa_id"]}
 
 
@@ -143,23 +157,27 @@ def _ceo_erp(emp: int) -> dict:
     return saida
 
 
-@app.get("/api/ceo")
-def sala_do_ceo(s: dict = Depends(sessao), forcar: bool = False):
-    emp = s["empresa_id"]
+def _erp_em_cache(emp: int, forcar: bool = False) -> tuple[dict, str]:
+    """Uma leitura do ERP serve as duas telas. A Sala do CEO e o saguão pedem
+    o mesmo pulso; sem cache comum, a parede dobraria a carga no banco."""
     agora = bd.agora()
-
     fresco = (_CACHE_CEO["dados"] is not None and not forcar
               and _CACHE_CEO["em"] is not None
               and (datetime.fromisoformat(agora)
                    - datetime.fromisoformat(_CACHE_CEO["em"])) < _VALIDADE_CEO)
     if fresco:
-        erp = _CACHE_CEO["dados"]
-        lido_em = _CACHE_CEO["em"]
-    else:
-        erp = _ceo_erp(emp)
-        _CACHE_CEO["dados"] = erp
-        _CACHE_CEO["em"] = agora
-        lido_em = agora
+        return _CACHE_CEO["dados"], _CACHE_CEO["em"]
+    erp = _ceo_erp(emp)
+    _CACHE_CEO["dados"] = erp
+    _CACHE_CEO["em"] = agora
+    return erp, agora
+
+
+@app.get("/api/ceo")
+def sala_do_ceo(s: dict = Depends(sessao), forcar: bool = False):
+    emp = s["empresa_id"]
+    agora = bd.agora()
+    erp, lido_em = _erp_em_cache(emp, forcar)
 
     # ------------------------------------------------------------- a equipe
     # Cada agente com o que ele fez de verdade: quantas missões tocou, quando
@@ -558,6 +576,110 @@ def agenda(s: dict = Depends(sessao)):
             "       t.agente_id, t.estado AS veredito "
             "FROM entrega e JOIN tarefa t ON t.id = e.tarefa_id "
             "WHERE e.empresa_id=? ORDER BY e.id DESC LIMIT 8", (emp,)),
+    }
+
+
+# --------------------------------------------------------------------- saguão
+def _so_numero(linha: dict, campos: tuple[str, ...]) -> dict:
+    """Deixa passar apenas os campos escolhidos. Nada de valor em reais e nada
+    de nome de terceiro sai desta rota: a filtragem é por lista de permissão,
+    não por remoção, porque esquecer de remover é fácil demais."""
+    return {c: linha.get(c) for c in campos}
+
+
+@app.get("/api/saguao")
+def saguao(s: dict = Depends(sessao)):
+    """Painel de parede. Mostra que a empresa opera e que a NÓRIA vigia, sem
+    revelar quanto ela fatura, quem deve e o que está sob suspeita.
+
+    O que entra aqui: contagem de documentos, ritmo mensal em quantidade, a
+    equipe de agentes e a agenda de varreduras. O que nunca entra: reais,
+    nome de cliente, texto de achado e decisão pendente.
+    """
+    import agendador as ag
+
+    emp = s["empresa_id"]
+    agora = datetime.now(bd.FUSO)
+    hoje = agora.date().isoformat()
+    erp, lido_em = _erp_em_cache(emp)
+
+    pulso = (erp.get("pulso", {}).get("linhas") or [{}])[0]
+    serie = [_so_numero(l, ("mes", "qt"))
+             for l in (erp.get("serie", {}).get("linhas") or [])]
+
+    equipe = []
+    trabalhando = {r["agente_id"] for r in bd.linhas(
+        "SELECT DISTINCT agente_id FROM tarefa WHERE empresa_id=? AND "
+        "estado IN ('despachada','executando')", (emp,))}
+    for d in ar.todos():
+        sit, _motivo = d.situacao()
+        equipe.append({"nome": d.nome, "area": d.area, "papel": d.papel,
+                       "situacao": sit,
+                       "trabalhando_agora": d.id in trabalhando})
+    equipe.sort(key=lambda a: (a["area"], a["nome"]))
+
+    dia = agora.weekday()
+    rotinas = []
+    for chave, nome, hora, dias, _fn in ag.ROTINAS:
+        if dias is not None and dia not in dias:
+            continue
+        m = bd.linha("SELECT valor FROM marcador WHERE chave=?",
+                     (f"rotina:{chave}",))
+        rodou = bool(m) and bd.dj(m["valor"], None) == hoje
+        rotinas.append({"nome": nome, "hora": hora,
+                        "estado": "feito" if rodou else
+                                  ("atrasado" if agora.hour > hora
+                                   else "previsto")})
+    rotinas.sort(key=lambda r: r["hora"])
+
+    def n(sql, args=()):
+        return int((bd.linha(sql, args) or {}).get("n") or 0)
+
+    areas = sorted({d.area for d in ar.todos()})
+    return {
+        "empresa": (bd.linha("SELECT nome FROM empresa WHERE id=?",
+                             (emp,)) or {}).get("nome"),
+        "agora": agora.isoformat(timespec="seconds"),
+        "lido_em": lido_em,
+        "operacao": {
+            "ctes_hoje": int(pulso.get("ctes_hoje") or 0),
+            "ctes_mes": int(pulso.get("ctes_mes") or 0),
+            "ctes_12m": int(pulso.get("ctes_12m") or 0),
+            "serie": serie,
+            "erro": erp.get("pulso", {}).get("erro"),
+        },
+        "equipe": equipe,
+        "areas": areas,
+        "rotinas": rotinas,
+        "nucleo": {
+            "agentes": len(ar.todos()),
+            "habilitados": sum(1 for d in ar.todos()
+                               if d.situacao()[0] == "habilitado"),
+            "areas": len(areas),
+            "camadas": 6,
+            # Par é mão dupla: comercial contesta o fiscal e o fiscal contesta
+            # o comercial contam como um par só, igual à abertura.
+            "pares_contraprova": len({
+                frozenset((quem, c["agente"]))
+                for quem, lista in orq.CONTRAPROVA.items() for c in lista}),
+            "conferencias_hoje": n(
+                "SELECT COUNT(*) n FROM validacao WHERE empresa_id=? AND "
+                "substr(criada_em,1,10)=?", (emp, hoje)),
+            "conferencias_total": n(
+                "SELECT COUNT(*) n FROM validacao WHERE empresa_id=?", (emp,)),
+            "consultas_hoje": n(
+                "SELECT COUNT(*) n FROM execucao_ferramenta WHERE empresa_id=? "
+                "AND substr(iniciada_em,1,10)=?", (emp, hoje)),
+            "evidencias": n(
+                "SELECT COUNT(*) n FROM evidencia WHERE empresa_id=?", (emp,)),
+            "missoes_concluidas": n(
+                "SELECT COUNT(*) n FROM missao WHERE empresa_id=? AND "
+                "estado='concluida'", (emp,)),
+            "missoes_em_curso": n(
+                "SELECT COUNT(*) n FROM missao WHERE empresa_id=? AND estado "
+                "IN ('planejada','executando','validando','replanejando')",
+                (emp,)),
+        },
     }
 
 
