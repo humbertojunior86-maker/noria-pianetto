@@ -117,6 +117,65 @@ CONSULTAS: dict[str, tuple] = {
             ORDER BY (t.vl_total - COALESCE(t.vl_pago,0)) DESC LIMIT 500""",
         ["id_tipo", "dias"], False,
         "títulos em aberto vencidos há mais de N dias (1=receber, 2=pagar)"),
+
+    # ---------------------------------------------------------------- CEO
+    # O que o dono da empresa olha primeiro. Consultas propositalmente
+    # baratas (~1s cada) porque a sala do CEO relê a cada minuto.
+
+    "ceo.pulso": (
+        """SELECT
+             (SELECT count(*) FROM ctrc WHERE dt_cancelamento IS NULL
+                AND dt_emissao::date = CURRENT_DATE) AS ctes_hoje,
+             (SELECT coalesce(sum(vl_total),0) FROM ctrc WHERE dt_cancelamento IS NULL
+                AND dt_emissao::date = CURRENT_DATE) AS receita_hoje,
+             (SELECT count(*) FROM ctrc WHERE dt_cancelamento IS NULL
+                AND dt_emissao >= date_trunc('month', CURRENT_DATE)) AS ctes_mes,
+             (SELECT coalesce(sum(vl_total),0) FROM ctrc WHERE dt_cancelamento IS NULL
+                AND dt_emissao >= date_trunc('month', CURRENT_DATE)) AS receita_mes,
+             (SELECT count(*) FROM ctrc WHERE dt_cancelamento IS NULL
+                AND dt_emissao >= CURRENT_DATE - interval '12 months') AS ctes_12m,
+             (SELECT coalesce(sum(vl_total),0) FROM ctrc WHERE dt_cancelamento IS NULL
+                AND dt_emissao >= CURRENT_DATE - interval '12 months') AS receita_12m""",
+        [], False, "CT-es e receita de hoje, do mês e dos 12 meses"),
+
+    "ceo.carteira": (
+        """SELECT t.id_tipo,
+                  count(*) AS qt,
+                  sum(t.vl_total - coalesce(t.vl_pago,0)) AS aberto,
+                  count(*) FILTER (WHERE t.dt_vencimento::date < CURRENT_DATE) AS qt_vencido,
+                  sum(CASE WHEN t.dt_vencimento::date < CURRENT_DATE
+                           THEN t.vl_total - coalesce(t.vl_pago,0) ELSE 0 END) AS vencido
+             FROM titulo t
+            WHERE t.dt_quitacao IS NULL
+              AND (t.vl_total - coalesce(t.vl_pago,0)) > 0.009
+            GROUP BY t.id_tipo ORDER BY t.id_tipo""",
+        [], False, "a receber e a pagar em aberto, e quanto já venceu"),
+
+    # Concentração é por GRUPO econômico, não por CNPJ: filiais do mesmo dono
+    # quebram na mesma crise. Agrupa pela raiz de 8 dígitos do CNPJ.
+    "ceo.concentracao": (
+        """WITH base AS (
+             SELECT left(regexp_replace(coalesce(p.nr_cnpj_cpf,''),'[^0-9]','','g'),8) AS raiz,
+                    coalesce(nullif(p.nm_fantasia,''), p.nm_pessoa) AS nome,
+                    c.vl_total
+               FROM ctrc c LEFT JOIN pessoa p ON p.cd_pessoa = c.cd_pessoa_pagador
+              WHERE c.dt_cancelamento IS NULL
+                AND c.dt_emissao >= CURRENT_DATE - interval '12 months'),
+           tot AS (SELECT sum(vl_total) t FROM base)
+           SELECT b.raiz, min(b.nome) AS nome, sum(b.vl_total) AS receita,
+                  round(100.0*sum(b.vl_total)/(SELECT t FROM tot), 2) AS pct
+             FROM base b WHERE b.raiz <> ''
+            GROUP BY b.raiz ORDER BY receita DESC LIMIT 8""",
+        [], False, "maiores grupos econômicos por receita em 12 meses"),
+
+    "ceo.serie_mensal": (
+        """SELECT to_char(date_trunc('month', c.dt_emissao),'YYYY-MM') AS mes,
+                  count(*) AS qt, sum(c.vl_total) AS receita
+             FROM ctrc c
+            WHERE c.dt_cancelamento IS NULL
+              AND c.dt_emissao >= date_trunc('month', CURRENT_DATE) - interval '12 months'
+            GROUP BY 1 ORDER BY 1""",
+        [], False, "receita e CT-es mês a mês nos últimos 13 meses"),
 }
 
 

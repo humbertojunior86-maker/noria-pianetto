@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -110,6 +110,111 @@ def panorama(s: dict = Depends(sessao)):
         "ultimas_missoes": ult,
         "achados_abertos": achados,
         "gerado_em": bd.agora(),
+    }
+
+
+# ------------------------------------------------------------------ sala do CEO
+# O dono da empresa não abre o sistema para navegar: ele abre para saber se
+# está tudo de pé. Esta rota junta, num fôlego só, o dinheiro real do ERP, o
+# risco estrutural e o que a equipe de agentes está fazendo agora.
+#
+# O ERP é consultado no máximo uma vez por minuto. Sala do CEO fica aberta na
+# TV o dia inteiro; não vou martelar o banco de produção por vaidade.
+_CACHE_CEO: dict = {"em": None, "dados": None}
+_VALIDADE_CEO = timedelta(seconds=60)
+
+
+def _ceo_erp(emp: int) -> dict:
+    """Números do ERP com carimbo de hora. Falha de uma consulta não derruba
+    as outras: cada bloco diz se veio ou por que não veio."""
+    saida: dict = {}
+    for op, chave in (("ceo.pulso", "pulso"),
+                      ("ceo.carteira", "carteira"),
+                      ("ceo.concentracao", "concentracao"),
+                      ("ceo.serie_mensal", "serie")):
+        r = fb.rodar("atua", op, {}, empresa_id=emp,
+                     acoes_permitidas=[f"atua.{op}"])
+        if r.ok:
+            saida[chave] = {"linhas": r.dados.get("linhas", []),
+                            "consultada_em": r.dados.get("consultada_em")}
+        else:
+            saida[chave] = {"erro": r.erro or "consulta não respondeu",
+                            "linhas": []}
+    return saida
+
+
+@app.get("/api/ceo")
+def sala_do_ceo(s: dict = Depends(sessao), forcar: bool = False):
+    emp = s["empresa_id"]
+    agora = bd.agora()
+
+    fresco = (_CACHE_CEO["dados"] is not None and not forcar
+              and _CACHE_CEO["em"] is not None
+              and (datetime.fromisoformat(agora)
+                   - datetime.fromisoformat(_CACHE_CEO["em"])) < _VALIDADE_CEO)
+    if fresco:
+        erp = _CACHE_CEO["dados"]
+        lido_em = _CACHE_CEO["em"]
+    else:
+        erp = _ceo_erp(emp)
+        _CACHE_CEO["dados"] = erp
+        _CACHE_CEO["em"] = agora
+        lido_em = agora
+
+    # ------------------------------------------------------------- a equipe
+    # Cada agente com o que ele fez de verdade: quantas missões tocou, quando
+    # trabalhou pela última vez e se está executando algo neste instante.
+    trabalho = {r["agente_id"]: r for r in bd.linhas(
+        "SELECT t.agente_id, COUNT(*) n, MAX(t.atualizada_em) ultima, "
+        "SUM(CASE WHEN t.estado IN ('despachada','executando') THEN 1 ELSE 0 END) agora "
+        "FROM tarefa t WHERE t.empresa_id=? AND t.agente_id IS NOT NULL "
+        "GROUP BY t.agente_id", (emp,))}
+
+    equipe = []
+    for d in ar.todos():
+        sit, motivo = d.situacao()
+        w = trabalho.get(d.id) or {}
+        equipe.append({
+            "codigo": d.id, "nome": d.nome, "papel": d.papel,
+            "area": d.area, "situacao": sit, "limitacao": motivo,
+            "tarefas": int(w.get("n") or 0),
+            "trabalhando_agora": int(w.get("agora") or 0) > 0,
+            "ultima_vez": w.get("ultima"),
+        })
+    equipe.sort(key=lambda a: (a["situacao"] != "habilitado", -a["tarefas"], a["nome"]))
+
+    # ------------------------------------------------------------- a operação
+    em_curso = bd.linhas(
+        "SELECT id, objetivo, estado, criada_em FROM missao WHERE empresa_id=? "
+        "AND estado IN ('planejada','executando','validando','replanejando') "
+        "ORDER BY id DESC", (emp,))
+
+    hoje = agora[:10]
+    return {
+        "empresa": bd.linha("SELECT nome, cnpj FROM empresa WHERE id=?", (emp,)),
+        "erp": erp,
+        "lido_em": lido_em,
+        "equipe": equipe,
+        "operacao": {
+            "em_curso": em_curso,
+            "concluidas_hoje": int(bd.linha(
+                "SELECT COUNT(*) n FROM missao WHERE empresa_id=? AND "
+                "estado='concluida' AND substr(encerrada_em,1,10)=?",
+                (emp, hoje))["n"] or 0),
+            "evidencias_hoje": int(bd.linha(
+                "SELECT COUNT(*) n FROM evidencia WHERE empresa_id=? AND "
+                "substr(criada_em,1,10)=?", (emp, hoje))["n"] or 0),
+            "consultas_hoje": int(bd.linha(
+                "SELECT COUNT(*) n FROM execucao_ferramenta WHERE empresa_id=? "
+                "AND substr(iniciada_em,1,10)=?", (emp, hoje))["n"] or 0),
+            "reprovacoes_abertas": int(bd.linha(
+                "SELECT COUNT(*) n FROM validacao WHERE empresa_id=? AND "
+                "resultado='reprovado'", (emp,))["n"] or 0),
+            "aprovacoes_pendentes": int(bd.linha(
+                "SELECT COUNT(*) n FROM acao_externa WHERE empresa_id=? AND "
+                "estado IN ('proposta','aguardando')", (emp,))["n"] or 0),
+        },
+        "gerado_em": agora,
     }
 
 

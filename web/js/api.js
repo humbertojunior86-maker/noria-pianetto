@@ -90,6 +90,7 @@ export const execucoes = () => pedir('/execucoes');
 export const artefatos = () => pedir('/artefatos');
 export const aprovacoes = () => pedir('/aprovacoes');
 export const integracoes = () => pedir('/integracoes');
+export const ceo = (forcar) => pedir('/ceo' + (forcar ? '?forcar=true' : ''));
 export const evidencia = (id) => pedir(`/evidencias/${id}`);
 
 /* ------------------------------------------------------------- comandos --- */

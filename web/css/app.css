@@ -754,3 +754,364 @@ table.tabela td strong { color: var(--tinta); font-weight: var(--peso-medio); }
     z-index: var(--z-flutuante);
   }
 }
+
+/* ==========================================================================
+   Sala do CEO — tela de TV: número grande, leitura de longe, um olhar só.
+   Tudo em variáveis de tokens.css; nenhuma cor literal. Prefixo ceo-.
+   ========================================================================== */
+.ceo { display: flex; flex-direction: column; gap: var(--e-6); }
+
+.ceo-topo {
+  display: flex;
+  align-items: center;
+  gap: var(--e-4);
+  flex-wrap: wrap;
+}
+.ceo-topo .vao { flex: 1 1 auto; }
+.ceo-topo-hora { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ceo-topo-hora b {
+  font-size: var(--t-peq);
+  font-weight: var(--peso-medio);
+  color: var(--tinta-2);
+}
+.ceo-topo-hora span {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--letra-larga);
+  text-transform: uppercase;
+  color: var(--tinta-3);
+}
+
+/* ------------------------------------------------- grandes números ------- */
+.ceo-faixa { display: flex; flex-direction: column; gap: var(--e-3); }
+
+.ceo-hoje {
+  display: flex;
+  align-items: center;
+  gap: var(--e-2);
+  font-size: var(--t-peq);
+  color: var(--tinta-2);
+}
+.ceo-hoje b { color: var(--tinta); font-weight: var(--peso-medio); }
+.ceo-hoje .pulso.apagado, .ceo-agente .pulso.apagado { background: var(--tinta-4); }
+
+.ceo-numeroes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--e-4);
+}
+.ceo-numerao {
+  background: var(--painel);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio-md);
+  box-shadow: var(--sombra-1);
+  padding: var(--e-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--e-2);
+  min-width: 0;
+}
+.ceo-numerao .rot {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--letra-larga);
+  color: var(--tinta-3);
+}
+.ceo-numerao .val {
+  /* O único tipo grande do sistema: esta tela é lida da porta da sala. */
+  font-family: var(--display);
+  font-size: clamp(30px, 2.9vw, 48px);
+  font-weight: var(--peso-display);
+  letter-spacing: var(--letra-apertada);
+  line-height: 1.05;
+  /* Número redondo em uma linha só: quebrado no meio, perde a leitura de longe. */
+  white-space: nowrap;
+  color: var(--tinta);
+  font-variant-numeric: tabular-nums;
+}
+.ceo-numerao .exato {
+  font-family: var(--mono);
+  font-size: var(--t-peq);
+  color: var(--tinta-2);
+  font-variant-numeric: tabular-nums;
+}
+.ceo-numerao .apoio {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e-1);
+  margin-top: var(--e-1);
+  padding-top: var(--e-2);
+  border-top: 1px solid var(--linha);
+  font-size: var(--t-mini);
+  color: var(--tinta-3);
+}
+.ceo-numerao .apoio .frio { color: var(--tinta-3); }
+.ceo-numerao .ceo-vermelho { color: var(--erro); font-weight: var(--peso-medio); }
+.ceo-numerao.ceo-falho { border-color: var(--atencao); background: var(--atencao-fundo); }
+.ceo-numerao.ceo-falho .motivo {
+  font-size: var(--t-md);
+  font-weight: var(--peso-medio);
+  color: var(--atencao);
+}
+.ceo-numerao.ceo-falho .apoio,
+.ceo-numerao.ceo-falho .apoio + * { color: var(--tinta-3); }
+.ceo-numerao.ceo-falho > .apoio { border: 0; }
+
+.ceo-carimbo {
+  margin: var(--e-3) 0 0;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--letra-larga);
+  color: var(--tinta-3);
+}
+
+/* --------------------------------------------------------- curva mensal -- */
+.ceo-meio { align-items: start; }
+
+.ceo-leitura {
+  display: flex;
+  align-items: center;
+  gap: var(--e-3);
+  flex-wrap: wrap;
+  min-height: 26px;
+  margin-bottom: var(--e-3);
+  font-family: var(--mono);
+  font-size: var(--t-peq);
+  color: var(--tinta-2);
+}
+.ceo-leitura b { font-family: var(--corpo); color: var(--tinta); }
+
+.ceo-area { position: relative; }
+.ceo-svg { display: block; width: 100%; height: 200px; overflow: visible; }
+.ceo-grade-linha { stroke: var(--linha); stroke-width: 1; }
+.ceo-barra { fill: var(--acento); opacity: .82; }
+.ceo-barra.parcial {
+  fill: var(--acento-fundo);
+  stroke: var(--acento);
+  stroke-width: 1.4;
+  stroke-dasharray: 4 3;
+  opacity: 1;
+}
+.ceo-colunas { position: absolute; inset: 0; display: flex; }
+.ceo-coluna { flex: 1 1 0; min-width: 0; cursor: default; border-radius: var(--raio-min); }
+.ceo-coluna:hover, .ceo-coluna:focus-visible { background: var(--acento-fundo); }
+
+.ceo-rotulos {
+  display: flex;
+  margin-top: var(--e-2);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--tinta-3);
+}
+.ceo-rotulos span { flex: 1 1 0; text-align: center; min-width: 0; }
+.ceo-rotulos span.parcial { color: var(--atencao); }
+.ceo-nota-grafico {
+  margin: var(--e-3) 0 0;
+  font-size: var(--t-mini);
+  color: var(--tinta-3);
+}
+
+/* -------------------------------------------------------- concentração --- */
+.ceo-alerta {
+  display: flex;
+  gap: var(--e-3);
+  align-items: flex-start;
+  border: 1px solid var(--atencao);
+  background: var(--atencao-fundo);
+  border-radius: var(--raio);
+  padding: var(--e-3) var(--e-4);
+  margin-bottom: var(--e-4);
+  color: var(--atencao);
+}
+.ceo-alerta.erro { border-color: var(--erro); background: var(--erro-fundo); color: var(--erro); }
+.ceo-alerta svg { flex: none; margin-top: 2px; }
+.ceo-alerta b { display: block; font-size: var(--t-md); font-weight: var(--peso-forte); }
+.ceo-alerta p { margin: var(--e-1) 0 0; font-size: var(--t-peq); color: var(--tinta-2); }
+
+.ceo-barra-emp {
+  display: flex;
+  height: 22px;
+  border-radius: var(--raio-min);
+  overflow: hidden;
+  background: var(--painel-fundo);
+  gap: 1px;
+}
+.ceo-seg { background: var(--acento); min-width: 2px; }
+.ceo-seg.forte-erro { background: var(--erro); opacity: 1; }
+.ceo-seg.forte-atencao { background: var(--atencao); opacity: 1; }
+.ceo-seg.demais { background: var(--tinta-4); opacity: .5; }
+
+.ceo-conc-lista { list-style: none; margin: var(--e-4) 0 0; padding: 0; }
+.ceo-conc-lista li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto 62px;
+  gap: var(--e-3);
+  align-items: baseline;
+  padding: var(--e-2) 0;
+  border-top: 1px solid var(--linha);
+  font-size: var(--t-peq);
+}
+.ceo-conc-lista li:first-child { border-top: 0; }
+.ceo-conc-lista .pos { font-family: var(--mono); font-size: var(--t-micro); color: var(--tinta-4); }
+.ceo-conc-lista .nome {
+  color: var(--tinta);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ceo-conc-lista .receita, .ceo-conc-lista .pct {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--tinta-2);
+  white-space: nowrap;
+}
+.ceo-conc-lista .pct { text-align: right; font-weight: var(--peso-medio); }
+.ceo-conc-lista .pct.erro { color: var(--erro); }
+.ceo-conc-lista .pct.atencao { color: var(--atencao); }
+.ceo-conc-lista li.demais .nome, .ceo-conc-lista li.demais .receita { color: var(--tinta-3); }
+
+/* ------------------------------------------------------------- equipe ---- */
+.ceo-equipe {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--e-3);
+}
+.ceo-agente {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: var(--e-2) var(--e-3);
+  padding: var(--e-3);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--painel-fundo);
+  min-width: 0;
+}
+.ceo-agente .mono-inicial {
+  grid-row: span 2;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--raio-total);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--display);
+  font-size: var(--t-md);
+  font-weight: var(--peso-display);
+  color: var(--tinta-3);
+  background: var(--painel-alto);
+  border: 1px solid var(--linha-2);
+}
+.ceo-agente .quem { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ceo-agente .quem b {
+  font-size: var(--t-base);
+  font-weight: var(--peso-medio);
+  color: var(--tinta);
+  line-height: 1.2;
+}
+.ceo-agente .papel, .ceo-agente .area {
+  font-size: var(--t-mini);
+  color: var(--tinta-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ceo-agente .area { color: var(--tinta-4); }
+.ceo-agente .estado {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--e-2);
+  align-items: flex-start;
+  font-size: var(--t-mini);
+  line-height: var(--altura-media);
+}
+.ceo-agente .estado .pulso { margin-top: 4px; }
+.ceo-agente .estado.acento { color: var(--acento); }
+.ceo-agente .estado.ok { color: var(--ok); }
+.ceo-agente .estado.ok .pulso { background: var(--ok); }
+/* O brief manda apagar quem não opera, mas a limitação precisa ser lida:
+   tinta-4 no ponto, tinta-3 no texto — apagado sem virar invisível. */
+.ceo-agente .estado.frio { color: var(--tinta-3); }
+.ceo-agente.trabalhando { border-color: var(--acento-linha); background: var(--acento-fundo); }
+.ceo-agente.pronto { border-color: var(--linha-2); background: var(--painel-alto); }
+
+/* ----------------------------------------------------------- operação ---- */
+.ceo-missoes { list-style: none; margin: 0 0 var(--e-4); padding: 0; }
+.ceo-missoes li + li { border-top: 1px solid var(--linha); }
+.ceo-missao {
+  display: flex;
+  gap: var(--e-4);
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: var(--e-3) 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.ceo-missao b { display: block; font-size: var(--t-peq); font-weight: var(--peso-medio); color: var(--tinta); }
+.ceo-missao .meta { font-family: var(--mono); font-size: var(--t-mini); color: var(--tinta-3); }
+.ceo-missao .direita { margin-left: auto; display: flex; align-items: center; gap: var(--e-2); flex: none; }
+.ceo-tranquilo {
+  margin: 0 0 var(--e-4);
+  font-size: var(--t-peq);
+  color: var(--tinta-2);
+  background: var(--painel-fundo);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  padding: var(--e-3) var(--e-4);
+}
+
+.ceo-dias { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--e-2); }
+.ceo-dia {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e-1);
+  padding: var(--e-3);
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--painel-fundo);
+  min-width: 0;
+}
+.ceo-dia .v {
+  font-family: var(--mono);
+  font-size: var(--t-xl);
+  font-weight: var(--peso-medio);
+  line-height: 1;
+  color: var(--tinta);
+  font-variant-numeric: tabular-nums;
+}
+.ceo-dia .r { font-size: var(--t-mini); color: var(--tinta-3); }
+a.ceo-dia:hover { border-color: var(--linha-3); background: var(--painel-alto); }
+.ceo-dia.erro { border-color: var(--erro); background: var(--erro-fundo); }
+.ceo-dia.erro .v, .ceo-dia.erro .r { color: var(--erro); }
+.ceo-dia.atencao { border-color: var(--atencao); background: var(--atencao-fundo); }
+.ceo-dia.atencao .v, .ceo-dia.atencao .r { color: var(--atencao); }
+
+.ceo-log { max-height: 300px; }
+
+/* -------------------------------------------------- Sala do CEO estreita -- */
+@media (max-width: 1180px) {
+  .ceo-numeroes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ceo-equipe { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ceo-dias { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* Com menos largura, um rótulo de mês a cada dois evita texto colado. */
+  .ceo-rotulos span:nth-child(even) { visibility: hidden; }
+}
+
+@media (max-width: 860px) {
+  .ceo-numeroes { grid-template-columns: minmax(0, 1fr); }
+  .ceo-equipe { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ceo-dias { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ceo-numerao .val { font-size: clamp(30px, 9.6vw, 48px); }
+  .ceo-svg { height: 170px; }
+  .ceo-conc-lista li { grid-template-columns: 18px minmax(0, 1fr) 56px; }
+  .ceo-conc-lista .receita { display: none; }
+}
+
+@media (max-width: 520px) {
+  .ceo-equipe { grid-template-columns: minmax(0, 1fr); }
+}

@@ -15,7 +15,7 @@ Todo número exibido vem de uma rota da API. Não existe dado de exemplo em nenh
 | `js/fmt.js` | Dinheiro `R$ 1.964.842,57`, data `10/08/2026`, data-hora, número, duração, rótulos de estado |
 | `js/ui.js` | Fábrica `el()`, métrica, painel, etiqueta, estado vazio, tabela, tolerância a campo ausente |
 | `js/app.js` | Roteador por hash, menu lateral, tema claro/escuro, rodapé de resumo, poll de eventos (4 s) |
-| `js/telas/*.js` | As 8 telas |
+| `js/telas/*.js` | As 9 telas |
 | `js/abertura.js`, `abertura-teste.html`, `js/ofx.js` | **Não alterados** |
 
 Removidos por serem do sistema anterior: `js/data.js`, `js/boot.js`, `js/grafo.js`,
@@ -24,6 +24,12 @@ Nenhuma referência ao nome antigo restou no código (`rg -i cortex` volta vazio
 
 ## Telas
 
+0. **Sala do CEO** (`#/ceo`, rota padrão) — a empresa inteira num olhar, do `/api/ceo`:
+   receita de 12 meses, faturamento do mês, a receber e a pagar em aberto com o vencido
+   destacado, a curva de 13 meses em SVG (última barra vazada porque o mês está em curso),
+   o risco de concentração com o alerta dos 38,7% do Grupo MOTZ, os 15 agentes com quem
+   opera e quem espera integração, e a operação do dia com o fluxo de eventos ao vivo.
+   Relê sozinha a cada 60 s; o servidor guarda os números do ERP por 60 s.
 1. **Visão geral** (`#/visao`) — 4 métricas do `/api/panorama`, últimas missões clicáveis,
    missões por estado, integrações resumidas e o fluxo de eventos ao vivo.
 2. **Cérebro** (`#/cerebro`) — estado do núcleo, consultas e tempo medido em ferramenta,

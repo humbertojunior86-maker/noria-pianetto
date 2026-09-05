@@ -33,6 +33,8 @@ export function limpar(n) { while (n.firstChild) n.removeChild(n.firstChild); re
 /* ------------------------------------------------------------- ícones ----- */
 const CAMINHOS = {
   visao: 'M3 3h6v6H3zM11 3h6v4h-6zM11 9h6v8h-6zM3 11h6v6H3z',
+  // Sala do CEO: painel na parede com a curva do faturamento.
+  sala: 'M2.5 4h15v9.5h-15zM7 17h6M10 13.5V17M5.5 10.8l2.4-3 2.1 2.3 3.6-4',
   cerebro: 'M10 3v14M10 3a3 3 0 0 0-3 3 2.5 2.5 0 0 0-1 4.8A3 3 0 0 0 10 17M10 3a3 3 0 0 1 3 3 2.5 2.5 0 0 1 1 4.8A3 3 0 0 1 10 17',
   missoes: 'M4 3h9l3 3v11H4zM7 9h6M7 12h6',
   entregas: 'M3 7l7-4 7 4v6l-7 4-7-4zM3 7l7 4 7-4M10 11v6',

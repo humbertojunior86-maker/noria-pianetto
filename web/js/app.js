@@ -56,6 +56,7 @@ export const ctx = { usuario: null, empresa: null };
 
 /* --------------------------------------------------------------- rotas ---- */
 const TELAS = [
+  { id: 'ceo', rotulo: 'Sala do CEO', icone: 'sala', grupo: 'Operação', carregar: () => import('./telas/ceo.js') },
   { id: 'visao', rotulo: 'Visão geral', icone: 'visao', grupo: 'Operação', carregar: () => import('./telas/visao.js') },
   { id: 'cerebro', rotulo: 'Cérebro', icone: 'cerebro', grupo: 'Operação', carregar: () => import('./telas/cerebro.js') },
   { id: 'missoes', rotulo: 'Missões', icone: 'missoes', grupo: 'Operação', carregar: () => import('./telas/missoes.js') },
@@ -67,6 +68,7 @@ const TELAS = [
 ];
 
 const TITULOS = {
+  ceo: ['Sala do CEO', 'A empresa inteira num olhar, com a hora de cada número'],
   visao: ['Visão geral', 'O pulso real da operação, direto do núcleo'],
   cerebro: ['Cérebro', 'O ciclo de decisão em operação, alimentado por eventos reais'],
   missoes: ['Missões', 'Objetivo, plano, tarefas, validação e artefatos'],
@@ -80,7 +82,8 @@ const TITULOS = {
 function rotaAtual() {
   const h = (location.hash || '').replace(/^#\/?/, '');
   const p = h.split('/').filter(Boolean);
-  const tela = TELAS.some((t) => t.id === p[0]) ? p[0] : 'visao';
+  // Rota vazia cai na Sala do CEO: é a tela que fica aberta na TV da sala.
+  const tela = TELAS.some((t) => t.id === p[0]) ? p[0] : 'ceo';
   return { tela, params: p.slice(1) };
 }
 
@@ -201,7 +204,7 @@ function casca() {
       onclick: () => alternarLateral(true),
     }, icone('menu', 16)),
     el('div', null, [
-      el('h2', { id: 'titulo', texto: 'Visão geral' }),
+      el('h2', { id: 'titulo', texto: 'Sala do CEO' }),
       el('p.sub', { id: 'subtitulo', texto: '' }),
     ]),
     el('div.vao'),
