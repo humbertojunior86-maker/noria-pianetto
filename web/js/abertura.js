@@ -1,14 +1,17 @@
 /* ==========================================================================
    NÓRIA — sequência de abertura
    --------------------------------------------------------------------------
-   Módulo ES sem dependências. Desenha em <canvas> a inicialização do sistema:
-   um núcleo ciano pulsante e seis nós satélites (as funções reais da NÓRIA)
-   ligados por trilhas curvas por onde correm partículas de luz.
+   Módulo ES sem dependências. Desenha em <canvas> o núcleo acordando.
 
-   Quatro atos, ~9 s no total:
-     1  isolamento da instância e integridade do banco
-     2  acendimento das seis funções, uma a uma
-     3  fontes autorizadas (ATUA somente leitura, OFX, acervo)
+   A malha é um cérebro procedural de verdade: nuvem de pontos dobrada em
+   dois hemisférios, com tronco encefálico, e sinapses ligando cada nó aos
+   vizinhos mais próximos. Os pontos acendem conforme a inicialização avança
+   — o cérebro se forma na frente de quem abre o sistema.
+
+   Quatro atos, ~9,2 s no total:
+     1  a malha se forma — instância isolada, banco em somente leitura
+     2  os 15 agentes acendem em volta e se ligam ao núcleo
+     3  os pares de contraprova se ligam entre si
      4  núcleo em operação — aguardando objetivo
 
    Uso:
@@ -16,8 +19,9 @@
      abertura(document.querySelector('#abertura'), () => { ... });
      botaoPular.onclick = pular;
 
-   Contenção deliberada: poucas partículas, nenhum gradiente berrante.
-   A força vem da precisão do movimento.
+   Nada aqui é enfeite solto: os nomes, as áreas e os pares desenhados são os
+   que existem no núcleo. Se a API responder a tempo, vêm dela; se não,
+   caem no retrato abaixo, que é o mesmo cadastro.
    ========================================================================== */
 
 /* ----- Cores: lidas dos tokens CSS, com fallback literal ----------------- */
@@ -49,46 +53,47 @@ function lerTokens() {
   return t;
 }
 
-/* ----- As seis funções, na posição do logo ------------------------------ */
-/* ang em graus: 0 = direita, cresce no sentido do relógio na tela         */
-const FUNCOES = [
-  { id: 'dados',        rotulo: 'dados',        ang: -145, icone: 'grafico',  ordem: 0 },
-  { id: 'processos',    rotulo: 'processos',    ang: -35,  icone: 'engrenagem', ordem: 1 },
-  { id: 'investigacao', rotulo: 'investigação', ang: 180,  icone: 'lupa',     ordem: 2 },
-  { id: 'pessoas',      rotulo: 'pessoas',      ang: 0,    icone: 'pessoas',  ordem: 3 },
-  { id: 'validacao',    rotulo: 'validação',    ang: 145,  icone: 'visto',    ordem: 4 },
-  { id: 'decisao',      rotulo: 'decisão',      ang: 35,   icone: 'visto2',   ordem: 5 }
+/* ----- Retrato do cadastro (espelho de agentes/registro.py) ------------- */
+const AGENTES = [
+  { id: 'comercial.faturamento',  nome: 'Bruno',  area: 'faturamento' },
+  { id: 'comercial.inteligencia', nome: 'Sofia',  area: 'comercial' },
+  { id: 'controladoria.margem',   nome: 'Caio',   area: 'controladoria' },
+  { id: 'auditoria.interna',      nome: 'Lívia',  area: 'auditoria' },
+  { id: 'tesouraria.conciliador', nome: 'Marta',  area: 'tesouraria' },
+  { id: 'cobranca.carteira',      nome: 'Otávio', area: 'cobrança' },
+  { id: 'contas.pagar',           nome: 'Íris',   area: 'contas a pagar' },
+  { id: 'fiscal.documento',       nome: 'Alan',   area: 'fiscal' },
+  { id: 'fiscal.tributos',        nome: 'Téo',    area: 'tributos' },
+  { id: 'gente.documentos',       nome: 'Clara',  area: 'gente' },
+  { id: 'processos.rotina',       nome: 'Otto',   area: 'processos' },
+  { id: 'gente.jornada',          nome: 'Paula',  area: 'jornada' },
+  { id: 'frota.resultado',        nome: 'Davi',   area: 'frota' },
+  { id: 'frota.viagem',           nome: 'Nina',   area: 'viagem' },
+  { id: 'frota.combustivel',      nome: 'Rui',    area: 'combustível' }
 ];
 
-/* ----- Roteiro: tempo (ms) → linha de log ------------------------------- */
-const T_ATO2 = 2300;    // início do acendimento das funções
-const PASSO = 560;      // intervalo entre funções
-const T_ATO3 = T_ATO2 + PASSO * 6 + 240;
-const T_ATO4 = T_ATO3 + 1700;
-const T_FIM = T_ATO4 + 1100;
+/* Pares de contraprova ligados no núcleo (nucleo/orquestrador.py CONTRAPROVA) */
+const PARES = [
+  ['contas.pagar', 'auditoria.interna'],
+  ['comercial.faturamento', 'fiscal.documento'],
+  ['controladoria.margem', 'frota.resultado']
+];
 
-const ROTEIRO = [
-  { t: 180,  tipo: 'info', txt: 'instância isolada — noria-prod-01' },
-  { t: 760,  tipo: 'info', txt: 'cofre de credenciais selado · rede restrita' },
-  { t: 1340, tipo: 'ok',   txt: 'integridade do banco verificada — 0 divergências' },
-  { t: 2020, tipo: 'info', txt: 'acendendo funções operacionais' },
-  ...FUNCOES.slice().sort((a, b) => a.ordem - b.ordem).map((f) => ({
-    t: T_ATO2 + f.ordem * PASSO + 200,
-    tipo: 'ok',
-    txt: `função ${f.rotulo} · ativa`
-  })),
-  { t: T_ATO3 + 60,   tipo: 'info', txt: 'fontes autorizadas' },
-  { t: T_ATO3 + 480,  tipo: 'ok',   txt: 'atua · somente leitura' },
-  { t: T_ATO3 + 900,  tipo: 'ok',   txt: 'extrato ofx · conciliação bancária' },
-  { t: T_ATO3 + 1320, tipo: 'ok',   txt: 'acervo interno · documentos e evidências' },
-  { t: T_ATO4 + 120,  tipo: 'nucleo', txt: 'núcleo em operação — aguardando objetivo' }
-].sort((a, b) => a.t - b.t);
+/* ----- Tempos do roteiro (ms) ------------------------------------------ */
+const T_MALHA = 2400;                    // cérebro totalmente formado
+const T_AG = 2150;                       // primeiro agente acende
+const PASSO_AG = 235;                    // intervalo entre agentes
+const T_AG_FIM = T_AG + PASSO_AG * (AGENTES.length - 1) + 420;
+const T_PAR = T_AG_FIM + 260;            // primeiro par de contraprova
+const PASSO_PAR = 520;
+const T_PAR_FIM = T_PAR + PASSO_PAR * PARES.length;
+const T_ATO4 = T_PAR_FIM + 300;
+const T_FIM = T_ATO4 + 1250;
 
 const MAX_LINHAS = 7;
 
 /* ----- Utilidades ------------------------------------------------------- */
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const rad = (g) => (g * Math.PI) / 180;
 const facil = (x) => 1 - Math.pow(1 - clamp(x, 0, 1), 3);          // easeOutCubic
 const facilInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 
@@ -121,499 +126,508 @@ function rgba(hex, a) {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
+/* ==========================================================================
+   Cérebro procedural
+   ========================================================================== */
+
+/* Nuvem em forma de encéfalo: esfera deformada em lobos, hemisférios
+   separados, base achatada e um tronco descendo. */
+function nuvemCerebro(n, semente = 7) {
+  let s = semente;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const lado = i % 2 === 0 ? 1 : -1;
+    const u = rnd() * 2 - 1;
+    const t = rnd() * Math.PI * 2;
+    const r = Math.sqrt(1 - u * u);
+    let x = r * Math.cos(t), y = u, z = r * Math.sin(t);
+    const dobra = 0.14 * Math.sin(y * 9 + z * 5) + 0.1 * Math.sin(x * 7 - y * 4);
+    const k = 1 + dobra;
+    x *= k * 0.62; y *= k * 0.78; z *= k * 0.86;
+    x = lado * (Math.abs(x) + 0.16);
+    if (y < -0.45) y = -0.45 + (y + 0.45) * 0.45;
+    z *= 1 + 0.16 * Math.max(0, y);
+    pts.push({ x, y, z, semente: rnd() });
+  }
+  const tronco = Math.round(n * 0.07);
+  for (let i = 0; i < tronco; i++) {
+    const k = i / tronco;
+    pts.push({
+      x: (rnd() - 0.5) * 0.12,
+      y: -0.5 - k * 0.5,
+      z: (rnd() - 0.5) * 0.14 + 0.05,
+      semente: rnd()
+    });
+  }
+  return pts;
+}
+
+/* Sinapses: cada nó liga aos k vizinhos mais próximos dentro de um raio. */
+function sinapses(pts, k = 3, maxLen = 0.34) {
+  const arestas = [];
+  for (let i = 0; i < pts.length; i++) {
+    const cand = [];
+    for (let j = i + 1; j < Math.min(pts.length, i + 90); j++) {
+      const dx = pts[i].x - pts[j].x;
+      const dy = pts[i].y - pts[j].y;
+      const dz = pts[i].z - pts[j].z;
+      const l = Math.hypot(dx, dy, dz);
+      if (l < maxLen) cand.push([l, j]);
+    }
+    cand.sort((a, b) => a[0] - b[0]);
+    for (let m = 0; m < Math.min(k, cand.length); m++) arestas.push([i, cand[m][1]]);
+  }
+  return arestas;
+}
+
 /* ----- Instância única (para que `pular()` funcione sem referência) ----- */
 let atual = null;
 
 /**
  * Inicia a sequência de abertura dentro de `el`.
- * @param {HTMLElement} el container (recebe o canvas)
+ * @param {HTMLElement} el container (recebe o canvas e o log)
  * @param {Function} aoTerminar chamado uma vez, ao fim da sequência
  * @returns {{pular:Function, destruir:Function}}
  */
 export function abertura(el, aoTerminar) {
   if (atual) atual.destruir();
 
-  const cv = document.createElement('canvas');
-  cv.setAttribute('aria-hidden', 'true');
-  cv.style.cssText = 'display:block;width:100%;height:100%';
-  el.appendChild(cv);
-  const ctx = cv.getContext('2d');
+  let T = lerTokens();
+  let claro = ehClaro(T['--fundo']);
 
-  let tok = lerTokens();
-  let W = 0, H = 0, dpr = 1;
-  let raf = 0, t0 = 0, agora = 0;
-  let terminado = false, saltado = false;
-  const reduzido = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /* ----- DOM ------------------------------------------------------------ */
+  const tela = document.createElement('canvas');
+  tela.className = 'abertura-tela';
+  el.appendChild(tela);
 
-  /* -- dimensionamento ------------------------------------------------- */
+  const marca = document.createElement('div');
+  marca.className = 'abertura-marca';
+  marca.innerHTML =
+    '<div class="abertura-nome">NÓRIA</div>' +
+    '<div class="abertura-sub">Pianetto Transportes</div>';
+  el.appendChild(marca);
+
+  const logEl = document.createElement('div');
+  logEl.className = 'abertura-log';
+  el.appendChild(logEl);
+
+  const barra = document.createElement('div');
+  barra.className = 'abertura-barra';
+  barra.innerHTML = '<i></i>';
+  el.appendChild(barra);
+  const barraInterna = barra.querySelector('i');
+
+  /* ----- Cadastro vivo, se a API responder a tempo ---------------------- */
+  let agentes = AGENTES.map((a) => ({ ...a, situacao: null }));
+  let resumoEquipe = null;
+  try {
+    const tok = localStorage.getItem('noria.token');
+    if (tok) {
+      fetch('/api/agentes', { headers: { Authorization: `Bearer ${tok}` } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const lista = d && d.agentes;
+          if (!Array.isArray(lista) || lista.length === 0) return;
+          const porId = new Map(lista.map((a) => [a.id, a]));
+          agentes.forEach((a) => {
+            const v = porId.get(a.id);
+            if (v) { a.nome = v.nome || a.nome; a.situacao = v.situacao || null; }
+          });
+          const hab = lista.filter((a) => a.situacao === 'habilitado').length;
+          const rev = lista.filter((a) => a.situacao === 'revisor').length;
+          const sem = lista.length - hab - rev;
+          resumoEquipe = `${hab} habilitados · ${rev} revisor · ${sem} sem integração`;
+        })
+        .catch(() => { /* silencioso: a abertura não depende disso */ });
+    }
+  } catch { /* storage bloqueado */ }
+
+  /* ----- Malha ---------------------------------------------------------- */
+  const pts = nuvemCerebro(1200);
+  const arestas = sinapses(pts, 3);
+
+  /* ----- Estado --------------------------------------------------------- */
+  let w = 0, h = 0, compacto = false;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const ctx = tela.getContext('2d');
+  const t0 = performance.now();
+  let raf = 0;
+  let encerrado = false;
+  let escritas = 0;         // linhas de log já emitidas
+  const roteiro = [];       // preenchido abaixo (depende de `agentes`)
+
   function medir() {
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
     const r = el.getBoundingClientRect();
-    W = Math.max(320, Math.round(r.width || window.innerWidth));
-    H = Math.max(360, Math.round(r.height || window.innerHeight));
-    cv.width = Math.round(W * dpr);
-    cv.height = Math.round(H * dpr);
+    w = Math.max(1, r.width); h = Math.max(1, r.height);
+    compacto = w < 760;
+    tela.width = Math.round(w * dpr);
+    tela.height = Math.round(h * dpr);
+    tela.style.width = `${w}px`;
+    tela.style.height = `${h}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-
-  function geometria() {
-    const m = Math.min(W, H);
-    const rNo = clamp(m * 0.036, 15, 30);
-    const fsRotulo = clamp(m * 0.0125, 9, 11.5);
-    const fsLog = clamp(Math.min(W * 0.011, H * 0.016), 10.5, 13);
-
-    // largura reservada para o rótulo mais longo, para nada sair da tela
-    ctx.font = `${fsRotulo}px ${tok['--mono']}`;
-    let largRotulo = 0;
-    for (const f of FUNCOES) largRotulo = Math.max(largRotulo, ctx.measureText(f.rotulo).width);
-
-    const estreito = W < 700;
-    const folga = largRotulo + rNo + (estreito ? 18 : 30);
-    const rx = Math.max(88, Math.min(W * (estreito ? 0.36 : 0.33), W / 2 - folga));
-    // em telas estreitas a constelação fica mais vertical, para os nós não se colarem
-    const ry = Math.min(rx * (estreito ? 1.0 : 0.62), H * 0.23);
-    const cy = H * (estreito ? 0.42 : 0.42);
-
-    return { cx: W / 2, cy, rx, ry, rNo, fsRotulo, fsLog, m };
-  }
-
-  /* -- desenho dos ícones (traço fino, geométrico) ---------------------- */
-  function icone(tipo, x, y, r, cor, alfa) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.strokeStyle = rgba(cor, alfa);
-    ctx.fillStyle = rgba(cor, alfa);
-    ctx.lineWidth = Math.max(1.1, r * 0.075);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    const u = r * 0.42; // meia-caixa do glifo
-
-    if (tipo === 'grafico') {
-      const bw = u * 0.42;
-      [[-u * 0.82, u * 0.5], [0, u * 1.0], [u * 0.82, u * 1.55]].forEach(([bx, bh], i) => {
-        ctx.fillRect(bx - bw / 2, u * 0.75 - bh, bw, bh);
-      });
-    } else if (tipo === 'engrenagem') {
-      ctx.lineWidth = Math.max(1.4, r * 0.115);
-      ctx.beginPath();
-      ctx.arc(0, 0, u * 0.72, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.lineWidth = Math.max(1.2, r * 0.085);
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2 + 0.26;
-        ctx.beginPath();
-        ctx.moveTo(Math.cos(a) * u * 0.86, Math.sin(a) * u * 0.86);
-        ctx.lineTo(Math.cos(a) * u * 1.12, Math.sin(a) * u * 1.12);
-        ctx.stroke();
-      }
-      ctx.beginPath();
-      ctx.arc(0, 0, u * 0.24, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (tipo === 'lupa') {
-      ctx.beginPath();
-      ctx.arc(-u * 0.18, -u * 0.18, u * 0.68, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(u * 0.32, u * 0.32);
-      ctx.lineTo(u * 1.05, u * 1.05);
-      ctx.stroke();
-    } else if (tipo === 'pessoas') {
-      const cab = u * 0.30;
-      ctx.beginPath();
-      ctx.arc(-u * 0.52, -u * 0.34, cab, 0, Math.PI * 2);
-      ctx.arc(u * 0.52, -u * 0.34, cab, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(-u * 0.52, u * 0.72, u * 0.56, Math.PI * 1.12, Math.PI * 1.88);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(u * 0.52, u * 0.72, u * 0.56, Math.PI * 1.12, Math.PI * 1.88);
-      ctx.stroke();
-    } else if (tipo === 'visto' || tipo === 'visto2') {
-      const dx = tipo === 'visto2' ? -u * 0.30 : 0;
-      ctx.beginPath();
-      ctx.moveTo(dx - u * 0.62, 0);
-      ctx.lineTo(dx - u * 0.12, u * 0.52);
-      ctx.lineTo(dx + u * 0.72, -u * 0.58);
-      ctx.stroke();
-      if (tipo === 'visto2') {
-        ctx.globalAlpha = 0.55;
-        ctx.beginPath();
-        ctx.moveTo(u * 0.14, 0);
-        ctx.lineTo(u * 0.50, u * 0.40);
-        ctx.lineTo(u * 1.10, -u * 0.50);
-        ctx.stroke();
-      }
-    }
-    ctx.restore();
-  }
-
-  /* -- trilha curva núcleo ↔ nó ---------------------------------------- */
-  function pontosTrilha(g, f) {
-    const a = rad(f.ang);
-    const nx = g.cx + Math.cos(a) * g.rx;
-    const ny = g.cy + Math.sin(a) * g.ry;
-    // controle deslocado perpendicularmente: curva discreta, sempre pra fora
-    const mx = (g.cx + nx) / 2;
-    const my = (g.cy + ny) / 2;
-    const dx = nx - g.cx, dy = ny - g.cy;
-    const L = Math.hypot(dx, dy) || 1;
-    const lado = Math.sign(Math.cos(a)) || 1;
-    const desv = L * 0.16 * (f.ang < 0 ? -1 : 1) * (Math.abs(f.ang) === 180 ? 0.6 : 1);
-    const px = mx + (-dy / L) * desv * lado;
-    const py = my + (dx / L) * desv * lado;
-    return { nx, ny, px, py };
-  }
-
-  const naCurva = (t, a, c, b) => {
-    const u = 1 - t;
-    return u * u * a + 2 * u * t * c + t * t * b;
-  };
-
-  /* -- estado de cada função no tempo ----------------------------------- */
-  function estadoFuncao(f, t) {
-    const inicio = T_ATO2 + f.ordem * PASSO;
-    const p = clamp((t - inicio) / 700, 0, 1);
-    return { p: facil(p), aceso: p > 0.02, inicio };
-  }
-
-  /* -- quadro ----------------------------------------------------------- */
-  function quadro(t) {
-    const g = geometria();
-    const acento = tok['--acento'];
-    const cromo = tok['--cromo'];
-    const claro = ehClaro(tok['--fundo']);
-    const kLinha = claro ? 1.9 : 1;   // traços do metal precisam de mais peso no claro
-
-    // fundo
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = tok['--fundo'];
-    ctx.fillRect(0, 0, W, H);
-
-    // véu radial muito discreto atrás do núcleo
-    const veu = ctx.createRadialGradient(g.cx, g.cy, 0, g.cx, g.cy, g.rx * 1.9);
-    veu.addColorStop(0, rgba(acento, 0.055));
-    veu.addColorStop(0.55, rgba(acento, 0.014));
-    veu.addColorStop(1, rgba(acento, 0));
-    ctx.fillStyle = veu;
-    ctx.fillRect(0, 0, W, H);
-
-    // órbita de referência (metal muito fraco)
-    const orb = clamp((t - 500) / 900, 0, 1);
-    if (orb > 0) {
-      ctx.save();
-      ctx.strokeStyle = rgba(cromo, 0.06 * kLinha * orb);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.ellipse(g.cx, g.cy, g.rx, g.ry, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // trilhas + nós
-    for (const f of FUNCOES) {
-      const { nx, ny, px, py } = pontosTrilha(g, f);
-      const st = estadoFuncao(f, t);
-
-      // trilha: traço apagado sempre, aceso progressivo
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = rgba(cromo, 0.10 * kLinha * orb);
-      ctx.beginPath();
-      ctx.moveTo(g.cx, g.cy);
-      ctx.quadraticCurveTo(px, py, nx, ny);
-      ctx.stroke();
-
-      if (st.p > 0) {
-        // desenha a curva até a fração acesa (do núcleo para fora)
-        ctx.save();
-        ctx.strokeStyle = rgba(acento, 0.34 + 0.14 * st.p);
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        const passos = 26;
-        for (let i = 0; i <= passos * st.p; i++) {
-          const u = i / passos;
-          const x = naCurva(u, g.cx, px, nx);
-          const y = naCurva(u, g.cy, py, ny);
-          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-        ctx.restore();
-
-        // partículas: nó → núcleo → nó (2 por trilha, discretas)
-        if (st.p > 0.95 && !reduzido) {
-          for (let k = 0; k < 2; k++) {
-            const fase = ((t - st.inicio) / 2100 + k * 0.5) % 1;
-            const u = fase < 0.5 ? facilInOut(fase * 2) : 1 - facilInOut((fase - 0.5) * 2);
-            const uu = 1 - u; // 0 no nó, 1 no núcleo → inverte para ir do nó
-            const x = naCurva(uu, g.cx, px, nx);
-            const y = naCurva(uu, g.cy, py, ny);
-            const brilho = Math.sin(Math.min(1, u * 2) * Math.PI) * 0.9 + 0.1;
-            ctx.fillStyle = rgba(acento, 0.85 * brilho);
-            ctx.beginPath();
-            ctx.arc(x, y, Math.max(1.4, g.rNo * 0.075), 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-      }
-
-      // nó
-      const r = g.rNo;
-      const ent = clamp((t - 620 - f.ordem * 60) / 620, 0, 1);
-      if (ent <= 0) continue;
-      const rr = r * (0.82 + 0.18 * facil(ent));
-      ctx.save();
-      ctx.globalAlpha = facil(ent);
-
-      ctx.fillStyle = tok['--painel'];
-      ctx.beginPath();
-      ctx.arc(nx, ny, rr, 0, Math.PI * 2);
-      ctx.fill();
-
-      // anel: cromo quando apagado, acento quando aceso
-      ctx.lineWidth = 1.2;
-      ctx.strokeStyle = rgba(cromo, (0.30 + 0.10 * (1 - st.p)) * (claro ? 1.5 : 1));
-      ctx.beginPath();
-      ctx.arc(nx, ny, rr, 0, Math.PI * 2);
-      ctx.stroke();
-
-      if (st.p > 0) {
-        const pulso = reduzido ? 1 : 0.86 + 0.14 * Math.sin(t / 620 + f.ordem);
-        ctx.strokeStyle = rgba(acento, 0.68 * st.p * pulso);
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.arc(nx, ny, rr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * st.p);
-        ctx.stroke();
-        // halo mínimo
-        ctx.fillStyle = rgba(acento, 0.06 * st.p);
-        ctx.beginPath();
-        ctx.arc(nx, ny, rr * 1.34, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      icone(f.icone, nx, ny, rr, st.p > 0.35 ? acento : cromo, 0.42 + 0.5 * st.p);
-      ctx.restore();
-
-      // rótulo mono minúsculo, radial para fora, preso dentro da tela
-      if (st.p > 0.15) {
-        const dir = Math.cos(rad(f.ang)) >= 0 ? 1 : -1;
-        ctx.save();
-        ctx.globalAlpha = clamp((st.p - 0.15) / 0.5, 0, 1);
-        ctx.font = `${g.fsRotulo}px ${tok['--mono']}`;
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = rgba(tok['--tinta-2'], 0.9);
-        const larg = ctx.measureText(f.rotulo).width;
-        let x = nx + dir * (rr + 12);
-        if (dir > 0) {
-          ctx.textAlign = 'left';
-          x = Math.min(x, W - 10 - larg);
-        } else {
-          ctx.textAlign = 'right';
-          x = Math.max(x, 10 + larg);
-        }
-        ctx.fillText(f.rotulo, x, ny);
-        ctx.restore();
-      }
-    }
-
-    // núcleo
-    const nasc = facil(clamp(t / 900, 0, 1));
-    const pulso = reduzido ? 1 : 1 + 0.06 * Math.sin(t / 700);
-    const acesos = FUNCOES.filter((f) => estadoFuncao(f, t).p > 0.9).length;
-    const rn = (g.rNo * 0.80 + g.rNo * 0.10 * acesos * 0.6) * nasc * pulso;
-
-    const gl = ctx.createRadialGradient(g.cx, g.cy, 0, g.cx, g.cy, rn * 4.6);
-    gl.addColorStop(0, rgba(acento, 0.34 * nasc));
-    gl.addColorStop(0.35, rgba(acento, 0.10 * nasc));
-    gl.addColorStop(1, rgba(acento, 0));
-    ctx.fillStyle = gl;
-    ctx.beginPath();
-    ctx.arc(g.cx, g.cy, rn * 4.6, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = rgba(claro ? acento : '#EAFFFA', 0.94 * nasc);
-    ctx.beginPath();
-    ctx.arc(g.cx, g.cy, rn * 0.42, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = rgba(acento, 0.85 * nasc);
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.arc(g.cx, g.cy, rn, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.strokeStyle = rgba(cromo, 0.22 * kLinha * nasc);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(g.cx, g.cy, rn * 1.7, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // varredura de integridade (ato 1): arco fino girando uma vez
-    if (t < 2000) {
-      const v = clamp((t - 300) / 1500, 0, 1);
-      ctx.save();
-      ctx.strokeStyle = rgba(acento, 0.5 * (1 - v));
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.arc(g.cx, g.cy, g.rNo * 2.4, rad(-90) + v * Math.PI * 2, rad(-90) + v * Math.PI * 2 + 0.9);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // estado central (ato 4)
-    if (t > T_ATO4) {
-      const a = facil((t - T_ATO4) / 700);
-      ctx.save();
-      ctx.globalAlpha = a;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.font = `${g.fsRotulo * 1.02}px ${tok['--mono']}`;
-      ctx.fillStyle = rgba(acento, 0.95);
-      ctx.letterSpacing = '0.16em';
-      ctx.fillText('NÚCLEO EM OPERAÇÃO', g.cx, g.cy + g.ry + g.rNo + 34);
-      ctx.letterSpacing = '0.02em';
-      ctx.font = `${g.fsRotulo}px ${tok['--mono']}`;
-      ctx.fillStyle = rgba(tok['--tinta-3'], 1);
-      ctx.fillText('aguardando objetivo', g.cx, g.cy + g.ry + g.rNo + 34 + g.fsRotulo * 2.1);
-      ctx.restore();
-    }
-
-    desenhaLog(t, g);
-  }
-
-  /* -- log na base ------------------------------------------------------ */
-  function desenhaLog(t, g) {
-    const visiveis = ROTEIRO.filter((l) => t >= l.t);
-    const janela = visiveis.slice(-MAX_LINHAS);
-    const fs = g.fsLog;
-    const lh = fs * 1.95;
-    const pad = clamp(W * 0.035, 20, 64);
-    // em telas estreitas o botão "Pular" fica centralizado embaixo: sobe o log
-    const base = H - (W < 700 ? 92 : clamp(H * 0.055, 26, 56));
-
-    const claro = ehClaro(tok['--fundo']);
-
-    ctx.save();
-    ctx.font = `${fs}px ${tok['--mono']}`;
-    ctx.textBaseline = 'alphabetic';
-    ctx.textAlign = 'left';
-
-    // filete vertical do bloco de log
-    const alturaBloco = lh * (janela.length - 1) + fs;
-    if (janela.length) {
-      ctx.strokeStyle = rgba(tok['--tinta'], claro ? 0.14 : 0.10);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(pad - 12, base - alturaBloco + 2);
-      ctx.lineTo(pad - 12, base + 3);
-      ctx.stroke();
-    }
-
-    janela.forEach((l, i) => {
-      const y = base - lh * (janela.length - 1 - i);
-      const idade = visiveis.length - visiveis.indexOf(l) - 1; // 0 = mais nova
-      const entrada = clamp((t - l.t) / 320, 0, 1);
-      // no tema claro o texto precisa de piso de opacidade mais alto
-      const piso = claro ? [1, 0.86, 0.72, 0.6] : [1, 0.72, 0.5, 0.42];
-      let alfa = idade <= 2 ? piso[idade]
-        : Math.max(claro ? 0.4 : 0.2, piso[3] - (idade - 3) * 0.07);
-      alfa *= entrada;
-
-      const cor = l.tipo === 'ok' ? tok['--ok']
-        : l.tipo === 'nucleo' ? tok['--acento']
-          : tok['--tinta-3'];
-
-      // marcador
-      ctx.fillStyle = rgba(cor, alfa * (l.tipo === 'info' ? 0.8 : 1));
-      if (l.tipo === 'info') {
-        ctx.fillRect(pad, y - fs * 0.34, fs * 0.30, 1.2);
-      } else {
-        ctx.beginPath();
-        ctx.arc(pad + fs * 0.16, y - fs * 0.32, fs * 0.16, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.fillStyle = rgba(l.tipo === 'nucleo' ? tok['--acento'] : tok['--tinta-2'], alfa);
-      const txt = l.txt.slice(0, Math.ceil(l.txt.length * clamp((t - l.t) / 260, 0, 1)));
-      ctx.fillText(txt, pad + fs * 1.05, y);
-    });
-    ctx.restore();
-  }
-
-  /* -- laço ------------------------------------------------------------- */
-  function passo(ts) {
-    if (!t0) t0 = ts;
-    agora = ts - t0;
-    quadro(Math.min(agora, T_FIM));
-    if (agora >= T_FIM) return finalizar();
-    raf = requestAnimationFrame(passo);
-  }
-
-  function finalizar() {
-    if (terminado) return;
-    terminado = true;
-    cancelAnimationFrame(raf);
-    raf = 0;
-    if (typeof aoTerminar === 'function') aoTerminar();
-  }
-
-  function quadroFinal() {
-    medir();
-    tok = lerTokens();
-    quadro(T_FIM);
-  }
-
-  function aoRedimensionar() {
-    medir();
-    if (terminado || saltado) quadro(T_FIM);
-    else quadro(Math.min(agora, T_FIM));
-  }
-
-  const obs = new ResizeObserver(aoRedimensionar);
-  obs.observe(el);
-
-  // troca de tema (data-tema="claro") recarrega os tokens em uso
-  const obsTema = new MutationObserver(() => {
-    tok = lerTokens();
-    if (terminado || saltado) quadro(T_FIM);
-  });
-  obsTema.observe(document.documentElement, { attributes: true, attributeFilter: ['data-tema', 'class', 'style'] });
-  window.addEventListener('resize', aoRedimensionar);
-
-  const ctrl = {
-    pular() {
-      saltado = true;
-      cancelAnimationFrame(raf);
-      raf = 0;
-      quadroFinal();
-      finalizar();
-    },
-    destruir() {
-      cancelAnimationFrame(raf);
-      obs.disconnect();
-      obsTema.disconnect();
-      window.removeEventListener('resize', aoRedimensionar);
-      if (cv.parentNode) cv.parentNode.removeChild(cv);
-      if (atual === ctrl) atual = null;
-    }
-  };
-  atual = ctrl;
-
   medir();
+  const ro = new ResizeObserver(medir);
+  ro.observe(el);
 
-  if (reduzido) {
-    // movimento reduzido: quadro final estático e pronto
-    saltado = true; // qualquer redesenho (resize/tema) mantém o quadro final
-    quadro(T_FIM);
-    setTimeout(finalizar, 400);
-    return ctrl;
+  /* ----- Roteiro do log ------------------------------------------------- */
+  function montarRoteiro() {
+    roteiro.length = 0;
+    roteiro.push(
+      { t: 200,  tipo: 'info', txt: 'instância isolada · noria-prod-01' },
+      { t: 760,  tipo: 'ok',   txt: 'banco atua aberto em somente leitura' },
+      { t: 1320, tipo: 'ok',   txt: '20 consultas nomeadas · nenhuma escrita permitida' },
+      { t: 1880, tipo: 'info', txt: 'seis camadas de validação armadas' },
+      { t: 2060, tipo: 'info', txt: 'acordando a equipe' }
+    );
+    agentes.forEach((a, i) => roteiro.push({
+      t: T_AG + i * PASSO_AG + 120,
+      tipo: 'ok',
+      txt: `${a.nome.toLowerCase()} · ${a.area}`
+    }));
+    roteiro.push({
+      t: T_AG_FIM,
+      tipo: 'ok',
+      // resolvido na hora de escrever: a API pode ter respondido depois daqui
+      txt: () => resumoEquipe || `${agentes.length} agentes no cadastro`
+    });
+    roteiro.push({ t: T_PAR - 60, tipo: 'info', txt: 'ligando os pares de contraprova' });
+    PARES.forEach((p, i) => {
+      const a = agentes.find((x) => x.id === p[0]);
+      const b = agentes.find((x) => x.id === p[1]);
+      roteiro.push({
+        t: T_PAR + i * PASSO_PAR + 140,
+        tipo: 'ok',
+        txt: `${(a ? a.nome : p[0]).toLowerCase()} × ${(b ? b.nome : p[1]).toLowerCase()} · outro caminho do banco`
+      });
+    });
+    roteiro.push({ t: T_ATO4 + 80, tipo: 'nucleo', txt: 'núcleo em operação — aguardando objetivo' });
+    roteiro.sort((a, b) => a.t - b.t);
+  }
+  montarRoteiro();
+
+  function emitir(linha) {
+    const d = document.createElement('div');
+    d.className = `l ${linha.tipo}`;
+    const n = String(escritas + 1).padStart(2, '0');
+    const txt = typeof linha.txt === 'function' ? linha.txt() : linha.txt;
+    d.textContent = `${n} › ${txt}`;
+    logEl.appendChild(d);
+    // reflow para a transição pegar
+    void d.offsetWidth;
+    d.classList.add('entrou');
+    while (logEl.children.length > MAX_LINHAS) logEl.removeChild(logEl.firstChild);
   }
 
-  raf = requestAnimationFrame(passo);
-  return ctrl;
+  /* ----- Geometria dos agentes na tela ---------------------------------- */
+  /* Devolve {x, y, ang} de cada agente num anel elíptico em volta do cérebro. */
+  function anel(cx, cy, R) {
+    const rx = Math.min(w * 0.38, R * 3.0);
+    const ry = Math.min(h * 0.325, R * 2.25);
+    return agentes.map((a, i) => {
+      const ang = -Math.PI / 2 + (i / agentes.length) * Math.PI * 2;
+      return {
+        ref: a,
+        i,
+        ang,
+        x: cx + Math.cos(ang) * rx,
+        y: cy + Math.sin(ang) * ry,
+        direita: Math.cos(ang) >= 0
+      };
+    });
+  }
+
+  /* Curva do núcleo até o agente, puxada de leve para fora do centro. */
+  function curva(cx, cy, p) {
+    const mx = (cx + p.x) / 2;
+    const my = (cy + p.y) / 2;
+    const nx = -(p.y - cy), ny = (p.x - cx);
+    const l = Math.hypot(nx, ny) || 1;
+    const desvio = 0.13;
+    return {
+      cx1: mx + (nx / l) * l * desvio * 0.5,
+      cy1: my + (ny / l) * l * desvio * 0.5
+    };
+  }
+
+  function pontoNaCurva(ax, ay, c1x, c1y, bx, by, t) {
+    const u = 1 - t;
+    return {
+      x: u * u * ax + 2 * u * t * c1x + t * t * bx,
+      y: u * u * ay + 2 * u * t * c1y + t * t * by
+    };
+  }
+
+  /* ----- Quadro --------------------------------------------------------- */
+  function quadro(agora) {
+    const t = agora - t0;
+
+    // log
+    while (escritas < roteiro.length && roteiro[escritas].t <= t) {
+      emitir(roteiro[escritas]);
+      escritas++;
+    }
+    const prog = clamp(t / T_ATO4, 0, 1);
+    barraInterna.style.transform = `scaleX(${prog.toFixed(4)})`;
+
+    // saída
+    if (t >= T_FIM) { terminar(); return; }
+
+    ctx.clearRect(0, 0, w, h);
+
+    const cx = w / 2;
+    const cy = h * (compacto ? 0.42 : 0.44);
+    const R = Math.min(w * 0.5, h * 0.62) * (compacto ? 0.40 : 0.30);
+
+    const aceso = clamp(t / T_MALHA, 0, 1);   // fração da malha já acesa
+    const gy = t * 0.00135;                    // giro lento
+    const gx = Math.sin(t * 0.00018) * 0.22;
+
+    const cCromo = T['--cromo-2'];
+    const cAcento = T['--acento'];
+    const cAtencao = T['--atencao'];
+    const forca = claro ? 1.35 : 1;            // no claro, mais contraste
+
+    // projeção
+    const proj = new Array(pts.length);
+    const cosY = Math.cos(gy), sinY = Math.sin(gy);
+    const cosX = Math.cos(gx), sinX = Math.sin(gx);
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      let x = p.x * cosY - p.z * sinY;
+      let z = p.x * sinY + p.z * cosY;
+      const y = p.y * cosX - z * sinX;
+      z = p.y * sinX + z * cosX;
+      const persp = 2.6 / (2.6 + z);
+      proj[i] = {
+        X: cx + x * R * persp,
+        Y: cy - y * R * persp,
+        z,
+        persp,
+        on: p.semente < aceso + 0.001,
+        puls: 0.6 + 0.4 * Math.sin(t * 0.0016 + p.semente * 22)
+      };
+    }
+
+    // halo
+    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.9);
+    halo.addColorStop(0, rgba(cAcento, claro ? 0.05 : 0.075));
+    halo.addColorStop(0.45, rgba(cCromo, claro ? 0.02 : 0.03));
+    halo.addColorStop(1, rgba(cCromo, 0));
+    ctx.fillStyle = halo;
+    ctx.fillRect(cx - R * 2, cy - R * 2, R * 4, R * 4);
+
+    // sinapses
+    ctx.lineWidth = 0.65;
+    for (let e = 0; e < arestas.length; e++) {
+      const a = proj[arestas[e][0]], b = proj[arestas[e][1]];
+      if (!a.on || !b.on) continue;
+      const prof = (a.z + b.z) / 2;
+      const al = (0.16 + 0.36 * (1 - (prof + 1) / 2)) * (0.55 + 0.45 * a.puls) * forca;
+      ctx.strokeStyle = rgba(e % 9 === 0 ? cAcento : cCromo, clamp(al, 0, 1));
+      ctx.beginPath(); ctx.moveTo(a.X, a.Y); ctx.lineTo(b.X, b.Y); ctx.stroke();
+    }
+
+    // nós
+    for (let i = 0; i < proj.length; i++) {
+      const p = proj[i];
+      if (!p.on) continue;
+      const quente = i % 23 === 0;
+      const raio = (quente ? 1.9 : 1.05) * p.persp * (0.7 + 0.5 * p.puls);
+      const al = (quente ? 0.95 : 0.6) * (0.5 + 0.5 * (1 - (p.z + 1) / 2)) * forca;
+      ctx.fillStyle = rgba(quente ? cAcento : cCromo, clamp(al, 0, 1));
+      ctx.beginPath(); ctx.arc(p.X, p.Y, raio, 0, 6.2832); ctx.fill();
+    }
+
+    // anéis e varredura do instrumento
+    const aneis = [R * 1.45, R * 1.66, R * 1.9];
+    aneis.forEach((rr, i) => {
+      ctx.strokeStyle = rgba(cCromo, (0.06 + i * 0.012) * forca);
+      ctx.lineWidth = 0.7;
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, 6.2832); ctx.stroke();
+      const a0 = t * (0.0004 + i * 0.00018) * (i % 2 ? -1 : 1);
+      ctx.strokeStyle = rgba(i === 1 ? cAcento : cCromo, (i === 1 ? 0.42 : 0.28) * forca);
+      ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.arc(cx, cy, rr, a0, a0 + 0.5 + i * 0.25); ctx.stroke();
+    });
+    ctx.strokeStyle = rgba(cCromo, 0.16 * forca);
+    ctx.lineWidth = 0.7;
+    for (let a = 0; a < 72; a++) {
+      const ang = (a / 72) * 6.2832;
+      const r1 = R * 1.9, r2 = r1 + (a % 6 === 0 ? 7 : 3);
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
+      ctx.lineTo(cx + Math.cos(ang) * r2, cy + Math.sin(ang) * r2);
+      ctx.stroke();
+    }
+    // varredura contida no núcleo
+    if (t < T_ATO4) {
+      const vao = R * 2.1;
+      const sy = ((t * 0.075) % (vao * 2)) - vao + cy;
+      const g = ctx.createLinearGradient(0, sy - 22, 0, sy + 22);
+      g.addColorStop(0, rgba(cAcento, 0));
+      g.addColorStop(0.5, rgba(cAcento, 0.09));
+      g.addColorStop(1, rgba(cAcento, 0));
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx, cy, R * 1.9, 0, 6.2832); ctx.clip();
+      ctx.fillStyle = g;
+      ctx.fillRect(cx - vao, sy - 22, vao * 2, 44);
+      ctx.strokeStyle = rgba(cAcento, 0.2);
+      ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(cx - vao, sy); ctx.lineTo(cx + vao, sy); ctx.stroke();
+      ctx.restore();
+    }
+
+    /* Posições dos agentes: os pares desenham por baixo, os nós por cima. */
+    const nos = anel(cx, cy, R);
+
+    /* ----- Pares de contraprova ----------------------------------------- */
+    PARES.forEach((par, i) => {
+      const nasce = T_PAR + i * PASSO_PAR;
+      const k = facilInOut(clamp((t - nasce) / 620, 0, 1));
+      if (k <= 0) return;
+      const a = nos.find((n) => n.ref.id === par[0]);
+      const b = nos.find((n) => n.ref.id === par[1]);
+      if (!a || !b) return;
+
+      // Arco pelo lado curto do anel. Usar o ponto médio dos dois nós falha
+      // quando eles são quase opostos: o meio cai em cima do núcleo e a
+      // direção da curva vira ruído. O ângulo médio resolve sempre.
+      let dif = b.ang - a.ang;
+      while (dif > Math.PI) dif -= Math.PI * 2;
+      while (dif < -Math.PI) dif += Math.PI * 2;
+      const meio = a.ang + dif / 2;
+      const largo = Math.abs(dif) / Math.PI;               // 0 = vizinhos, 1 = opostos
+      const fora = Math.hypot(a.x - cx, a.y - cy) * (1 + 0.55 * largo);
+      const c1x = cx + Math.cos(meio) * fora;
+      const c1y = cy + Math.sin(meio) * fora * 0.86;
+
+      ctx.save();
+      ctx.lineWidth = 1.35;
+      ctx.strokeStyle = rgba(cAtencao, 0.55 * k * forca);
+      ctx.setLineDash([4, 4]);
+      ctx.lineDashOffset = -t * 0.03;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      const passos = 30;
+      for (let s = 1; s <= passos * k; s++) {
+        const q = pontoNaCurva(a.x, a.y, c1x, c1y, b.x, b.y, s / passos);
+        ctx.lineTo(q.x, q.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      if (k >= 1) {
+        const fase = ((t - nasce - 620) % 1500) / 1500;
+        const pos = pontoNaCurva(a.x, a.y, c1x, c1y, b.x, b.y, fase);
+        ctx.fillStyle = rgba(cAtencao, 0.9 * Math.sin(fase * Math.PI));
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, 2.4, 0, 6.2832); ctx.fill();
+      }
+    });
+
+    /* ----- Agentes em volta --------------------------------------------- */
+    const fonte = compacto ? 9 : 10.5;
+    ctx.font = `600 ${fonte}px ${T['--mono']}`;
+    ctx.textBaseline = 'middle';
+
+    nos.forEach((p) => {
+      const nasce = T_AG + p.i * PASSO_AG;
+      const k = facil((t - nasce) / 620);
+      if (k <= 0) return;
+
+      const c = curva(cx, cy, p);
+      // trilha núcleo → agente, desenhada progressivamente
+      const kt = facilInOut(clamp((t - nasce) / 520, 0, 1));
+      ctx.save();
+      ctx.lineWidth = 0.9;
+      ctx.strokeStyle = rgba(cCromo, 0.2 * k * forca);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      const passos = 26;
+      for (let s = 1; s <= passos * kt; s++) {
+        const q = pontoNaCurva(cx, cy, c.cx1, c.cy1, p.x, p.y, s / passos);
+        ctx.lineTo(q.x, q.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // pulso correndo na trilha — o núcleo pede, o agente devolve
+      if (kt >= 1) {
+        const ciclo = 1900;
+        const fase = ((t - nasce - 520) % ciclo) / ciclo;
+        const ida = fase < 0.5;
+        const u = ida ? fase * 2 : (fase - 0.5) * 2;
+        const pos = pontoNaCurva(cx, cy, c.cx1, c.cy1, p.x, p.y, ida ? u : 1 - u);
+        const brilho = Math.sin(clamp(u, 0, 1) * Math.PI);
+        ctx.fillStyle = rgba(ida ? cAcento : cAtencao, 0.85 * brilho);
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, 2.1, 0, 6.2832); ctx.fill();
+      }
+
+      // nó do agente
+      const revisor = p.ref.situacao === 'revisor';
+      const cor = revisor ? cAtencao : cAcento;
+      const pul = 0.75 + 0.25 * Math.sin(t * 0.0022 + p.i * 1.7);
+      ctx.fillStyle = rgba(cor, 0.16 * k);
+      ctx.beginPath(); ctx.arc(p.x, p.y, 7.5 * k * pul, 0, 6.2832); ctx.fill();
+      ctx.fillStyle = rgba(cor, 0.92 * k);
+      ctx.beginPath(); ctx.arc(p.x, p.y, 2.9 * k, 0, 6.2832); ctx.fill();
+
+      // rótulo, virado para fora
+      ctx.textAlign = p.direita ? 'left' : 'right';
+      const dx = p.direita ? 12 : -12;
+      ctx.fillStyle = rgba(T['--tinta-2'], 0.9 * k);
+      ctx.fillText(p.ref.nome, p.x + dx, p.y - (compacto ? 0 : 5));
+      if (!compacto) {
+        ctx.font = `400 ${fonte - 1.5}px ${T['--mono']}`;
+        ctx.fillStyle = rgba(T['--tinta-4'], 0.95 * k);
+        ctx.fillText(p.ref.area, p.x + dx, p.y + 7);
+        ctx.font = `600 ${fonte}px ${T['--mono']}`;
+      }
+    });
+
+    // esmaecimento final
+    if (t > T_ATO4 + 500) {
+      const f = clamp((t - T_ATO4 - 500) / (T_FIM - T_ATO4 - 500), 0, 1);
+      ctx.fillStyle = rgba(T['--fundo'], f * 0.55);
+      ctx.fillRect(0, 0, w, h);
+    }
+
+    raf = requestAnimationFrame(quadro);
+  }
+
+  raf = requestAnimationFrame(quadro);
+
+  /* ----- Troca de tema recarrega os tokens em uso ------------------------ */
+  const obsTema = new MutationObserver(() => {
+    T = lerTokens();
+    claro = ehClaro(T['--fundo']);
+  });
+  obsTema.observe(document.documentElement, { attributes: true, attributeFilter: ['data-tema'] });
+
+  /* ----- Encerramento --------------------------------------------------- */
+  function destruir() {
+    cancelAnimationFrame(raf);
+    ro.disconnect();
+    obsTema.disconnect();
+    if (atual && atual.destruir === destruir) atual = null;
+  }
+
+  function terminar() {
+    if (encerrado) return;
+    encerrado = true;
+    destruir();
+    try { aoTerminar(); } catch (e) { console.error(e); }
+  }
+
+  atual = { pular: terminar, destruir };
+  return atual;
 }
 
-/** Salta para o quadro final e conclui a sequência em andamento. */
+/** Encerra a abertura em curso, se houver. */
 export function pular() {
-  if (atual) atual.pular();
+  if (atual && atual.pular) atual.pular();
 }
 
-/** Duração nominal da sequência, em ms. */
+/** Duração total da sequência, em ms. */
 export const DURACAO = T_FIM;
