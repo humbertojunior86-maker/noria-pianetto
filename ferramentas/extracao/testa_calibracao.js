@@ -2,7 +2,7 @@
 const fs = require('fs');
 global.window = {};
 new Function('window', fs.readFileSync(__dirname + '/../js/ofx.js', 'utf8'))(global.window);
-const { parseOFX, parseATUA, conciliar, normalizaMemo, diagnosticoSemantico } = window.CortexOFX;
+const { parseOFX, parseATUA, conciliar, normalizaMemo, diagnosticoSemantico } = window.NoriaOFX;
 
 let falhas = 0;
 const ok = (c, m) => { console.log((c ? '  ok   ' : '  FALHA') + ' ' + m); if (!c) falhas++; };

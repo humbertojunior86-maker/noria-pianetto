@@ -2,7 +2,7 @@
 const fs = require('fs');
 global.window = {};
 new Function('window', fs.readFileSync(__dirname + '/../js/ofx.js', 'utf8'))(global.window);
-const { normalizaMemo } = window.CortexOFX;
+const { normalizaMemo } = window.NoriaOFX;
 
 const dados = JSON.parse(fs.readFileSync('/tmp/ofx_real.json', 'utf8'));
 const BANCO = { '1': 'Banco do Brasil', '341': 'Itau', '208': 'BTG', '237': 'Bradesco', '422': 'Safra', '450': 'GoFlux/FitBank' };
