@@ -3,7 +3,7 @@
 import * as api from './api.js';
 import { el, juntar, limpar, icone, logo, carregando, erro } from './ui.js';
 import * as f from './fmt.js';
-import { abertura, pular } from './abertura.js';
+import { abertura, pular, DURACAO } from './abertura.js';
 
 /* ------------------------------------------------------------------ tema --- */
 const CHAVE_TEMA = 'noria.tema';
@@ -281,16 +281,32 @@ function marcarAbertura() {
 function rodarAbertura(aoTerminar) {
   const caixa = el('div', { id: 'abertura' }, [
     el('button.btn.btn-peq.pular', {
-      type: 'button', texto: 'Pular abertura', onclick: () => pular(),
+      type: 'button', texto: 'Pular abertura', onclick: () => { try { pular(); } catch { encerrar(); } },
     }),
   ]);
   document.body.appendChild(caixa);
   marcarAbertura();
-  abertura(caixa, () => {
+
+  let encerrada = false;
+  function encerrar() {
+    if (encerrada) return;
+    encerrada = true;
+    clearTimeout(cao);
     caixa.classList.add('saindo');
     setTimeout(() => caixa.remove(), 640);
     aoTerminar();
-  });
+  }
+
+  // Cão de guarda: a abertura é enfeite, o sistema é o que importa. Se ela
+  // travar por qualquer motivo, o painel entra no ar do mesmo jeito.
+  const cao = setTimeout(encerrar, DURACAO + 4000);
+
+  try {
+    abertura(caixa, encerrar);
+  } catch (e) {
+    console.error('abertura falhou, seguindo direto para o painel', e);
+    encerrar();
+  }
 }
 
 /* ----------------------------------------------------------------- boot --- */
@@ -322,6 +338,11 @@ async function aplicacao() {
 }
 
 function iniciar() {
+  // Avisa o salva-vidas que o código chegou vivo até aqui.
+  window.dispatchEvent(new Event('noria:vivo'));
+  const capa = document.getElementById('primeira-pintura');
+  if (capa) capa.remove();
+
   if (!api.temSessao()) {
     limpar(document.body);
     document.body.appendChild(telaEntrada(() => iniciar()));
