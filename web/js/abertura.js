@@ -111,7 +111,8 @@ const T_PAR = T_FAM_FIM + 180;           // primeiro par de contraprova
 const PASSO_PAR = 560;
 const T_PAR_FIM = T_PAR + PASSO_PAR * PARES.length;
 const T_ATO4 = T_PAR_FIM + 320;
-const T_FIM = T_ATO4 + 1300;
+const T_REVELA = T_ATO4 + 420;           // clarão e a frase final
+const T_FIM = T_ATO4 + 2600;
 
 const MAX_LINHAS = 7;
 
@@ -235,6 +236,10 @@ export function abertura(el, aoTerminar) {
   logEl.className = 'abertura-log';
   el.appendChild(logEl);
 
+  const desfecho = document.createElement('div');
+  desfecho.className = 'abertura-desfecho';
+  el.appendChild(desfecho);
+
   const barra = document.createElement('div');
   barra.className = 'abertura-barra';
   barra.innerHTML = '<i></i>';
@@ -270,12 +275,21 @@ export function abertura(el, aoTerminar) {
     }
   } catch { /* storage bloqueado */ }
 
+  /* ----- Poeira de fundo: dá profundidade numa tela grande -------------- */
+  const poeira = (() => {
+    let sp = 991;
+    const rnd = () => (sp = (sp * 16807) % 2147483647) / 2147483647;
+    return Array.from({ length: 170 }, () => ({
+      x: rnd(), y: rnd(), z: 0.25 + rnd() * 0.75, f: rnd() * 6.2832
+    }));
+  })();
+
   /* ----- Malha ---------------------------------------------------------- */
   const pts = nuvemCerebro(1200);
   const arestas = sinapses(pts, 3);
 
   /* ----- Estado --------------------------------------------------------- */
-  let w = 0, h = 0, compacto = false;
+  let w = 0, h = 0, compacto = false, esc = 1;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const ctx = tela.getContext('2d');
   const t0 = performance.now();
@@ -288,6 +302,9 @@ export function abertura(el, aoTerminar) {
     const r = el.getBoundingClientRect();
     w = Math.max(1, r.width); h = Math.max(1, r.height);
     compacto = w < 760;
+    // Numa tela de parede o público está longe: tudo cresce com a largura.
+    esc = clamp(w / 1440, 0.86, 2.1);
+    el.style.setProperty('--esc-ab', esc.toFixed(3));
     tela.width = Math.round(w * dpr);
     tela.height = Math.round(h * dpr);
     tela.style.width = `${w}px`;
@@ -356,8 +373,8 @@ export function abertura(el, aoTerminar) {
   /* ----- Geometria dos agentes na tela ---------------------------------- */
   /* Devolve {x, y, ang} de cada agente num anel elíptico em volta do cérebro. */
   function anel(cx, cy, R) {
-    const rx = Math.min(w * 0.38, R * 3.0);
-    const ry = Math.min(h * 0.325, R * 2.25);
+    const rx = Math.min(w * 0.385, R * 3.0);
+    const ry = Math.min(h * 0.345, R * 2.25);
     return agentes.map((a, i) => {
       const ang = -Math.PI / 2 + (i / agentes.length) * Math.PI * 2;
       return {
@@ -424,16 +441,27 @@ export function abertura(el, aoTerminar) {
 
     const cx = w / 2;
     const cy = h * (compacto ? 0.42 : 0.44);
-    const R = Math.min(w * 0.5, h * 0.62) * (compacto ? 0.40 : 0.30);
+    // Câmera: entra afastada e aproxima nos primeiros segundos; depois
+    // respira devagar, para a imagem nunca ficar estática na parede.
+    const camera = 0.80 + 0.20 * facilInOut(clamp(t / 3400, 0, 1));
+    const respira = 1 + 0.016 * Math.sin(t * 0.00062);
+    const Rbase = Math.min(w * 0.5, h * 0.62) * (compacto ? 0.40 : 0.35);
+    const R = Rbase * camera * respira;
 
     const aceso = clamp(t / T_MALHA, 0, 1);   // fração da malha já acesa
-    const gy = t * 0.00135;                    // giro lento
+    // Balanço em vez de giro completo. Com a volta inteira, por volta dos
+    // 10 s a câmera ficava exatamente sobre o vão entre os hemisférios e o
+    // cérebro parecia partido em dois. O balanço nunca chega nesse ângulo.
+    const gy = Math.sin(t * 0.00040) * 0.85 + Math.sin(t * 0.00017) * 0.16;
     const gx = Math.sin(t * 0.00018) * 0.22;
 
     const cCromo = T['--cromo-2'];
     const cAcento = T['--acento'];
     const cAtencao = T['--atencao'];
     const forca = claro ? 1.35 : 1;            // no claro, mais contraste
+    // Clarão do desfecho: tudo que já está na tela acende de uma vez.
+    const dtRev = t - T_REVELA;
+    const clarao = dtRev >= 0 && dtRev < 620 ? 1 - dtRev / 620 : 0;
 
     // projeção
     const proj = new Array(pts.length);
@@ -454,6 +482,19 @@ export function abertura(el, aoTerminar) {
         on: p.semente < aceso + 0.001,
         puls: 0.6 + 0.4 * Math.sin(t * 0.0016 + p.semente * 22)
       };
+    }
+
+    // poeira: anda devagar e acompanha a câmera, criando paralaxe
+    for (let i = 0; i < poeira.length; i++) {
+      const d = poeira[i];
+      const px = ((d.x + t * 0.0000075 * d.z) % 1) * w;
+      const py = ((d.y + Math.sin(d.f + t * 0.0002) * 0.004 + 1) % 1) * h;
+      const dx = (px - cx) * (camera - 1) * 0.5;
+      const dy = (py - cy) * (camera - 1) * 0.5;
+      ctx.fillStyle = rgba(cCromo, 0.06 + d.z * 0.1 * forca);
+      ctx.beginPath();
+      ctx.arc(px + dx, py + dy, d.z * 1.3 * esc, 0, 6.2832);
+      ctx.fill();
     }
 
     // halo
@@ -480,10 +521,12 @@ export function abertura(el, aoTerminar) {
       const p = proj[i];
       if (!p.on) continue;
       const quente = i % 23 === 0;
-      const raio = (quente ? 1.9 : 1.05) * p.persp * (0.7 + 0.5 * p.puls);
+      const raio = (quente ? 1.9 : 1.05) * esc * p.persp * (0.7 + 0.5 * p.puls);
       const al = (quente ? 0.95 : 0.6) * (0.5 + 0.5 * (1 - (p.z + 1) / 2)) * forca;
+      if (quente) { ctx.shadowColor = rgba(cAcento, 0.9); ctx.shadowBlur = 10 * esc; }
       ctx.fillStyle = rgba(quente ? cAcento : cCromo, clamp(al, 0, 1));
       ctx.beginPath(); ctx.arc(p.X, p.Y, raio, 0, 6.2832); ctx.fill();
+      if (quente) ctx.shadowBlur = 0;
     }
 
     // anéis e varredura do instrumento
@@ -599,7 +642,7 @@ export function abertura(el, aoTerminar) {
     });
 
     /* ----- Agentes em volta --------------------------------------------- */
-    const fonte = compacto ? 9 : 10.5;
+    const fonte = (compacto ? 9 : 10.5) * (compacto ? 1 : esc);
     ctx.font = `600 ${fonte}px ${T['--mono']}`;
     ctx.textBaseline = 'middle';
 
@@ -642,7 +685,7 @@ export function abertura(el, aoTerminar) {
         const kp = dtPing / 900;
         ctx.strokeStyle = rgba(cAcento, 0.42 * (1 - kp));
         ctx.lineWidth = 1.2 * (1 - kp) + 0.3;
-        ctx.beginPath(); ctx.arc(p.x, p.y, 4 + kp * 26, 0, 6.2832); ctx.stroke();
+        ctx.beginPath(); ctx.arc(p.x, p.y, (4 + kp * 30) * esc, 0, 6.2832); ctx.stroke();
       }
 
       // nó do agente
@@ -650,31 +693,69 @@ export function abertura(el, aoTerminar) {
       const cor = revisor ? cAtencao : cAcento;
       const pul = 0.75 + 0.25 * Math.sin(t * 0.0022 + p.i * 1.7);
       ctx.fillStyle = rgba(cor, 0.16 * k);
-      ctx.beginPath(); ctx.arc(p.x, p.y, 7.5 * k * pul, 0, 6.2832); ctx.fill();
-      ctx.fillStyle = rgba(cor, 0.92 * k);
-      ctx.beginPath(); ctx.arc(p.x, p.y, 2.9 * k, 0, 6.2832); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, 8 * esc * k * pul, 0, 6.2832); ctx.fill();
+      ctx.save();
+      ctx.shadowColor = rgba(cor, 0.85);
+      ctx.shadowBlur = 14 * esc;
+      ctx.fillStyle = rgba(cor, 0.95 * k);
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3.2 * esc * k, 0, 6.2832); ctx.fill();
+      ctx.restore();
 
       // Rótulo virado para fora. Ganha um halo da cor do fundo porque os
       // arcos das áreas passam por cima e comeriam a legibilidade do nome.
       ctx.save();
       ctx.textAlign = p.direita ? 'left' : 'right';
       ctx.shadowColor = rgba(T['--fundo'], 0.95);
-      ctx.shadowBlur = 7;
-      const dx = p.direita ? 12 : -12;
+      ctx.shadowBlur = 8 * esc;
+      const dx = (p.direita ? 12 : -12) * esc;
       ctx.fillStyle = rgba(T['--tinta-2'], 0.95 * k);
-      ctx.fillText(p.ref.nome, p.x + dx, p.y - (compacto ? 0 : 5));
+      ctx.fillText(p.ref.nome, p.x + dx, p.y - (compacto ? 0 : 5 * esc));
       if (!compacto) {
         ctx.font = `400 ${fonte - 1.5}px ${T['--mono']}`;
         ctx.fillStyle = rgba(T['--tinta-3'], 0.95 * k);
-        ctx.fillText(p.ref.area, p.x + dx, p.y + 7);
+        ctx.fillText(p.ref.area, p.x + dx, p.y + 7 * esc);
         ctx.font = `600 ${fonte}px ${T['--mono']}`;
       }
       ctx.restore();
     });
 
+    /* ----- Desfecho: onda de choque e a conta do que ficou armado ------- */
+    if (dtRev >= 0 && dtRev < 1500) {
+      const ko = facilInOut(clamp(dtRev / 1500, 0, 1));
+      const raio = ko * Math.hypot(w, h) * 0.62;
+      ctx.strokeStyle = rgba(cAcento, 0.5 * (1 - ko));
+      ctx.lineWidth = (3.5 * (1 - ko) + 0.5) * esc;
+      ctx.beginPath(); ctx.arc(cx, cy, raio, 0, 6.2832); ctx.stroke();
+      ctx.strokeStyle = rgba(cAcento, 0.16 * (1 - ko));
+      ctx.lineWidth = 1 * esc;
+      ctx.beginPath(); ctx.arc(cx, cy, raio * 0.86, 0, 6.2832); ctx.stroke();
+    }
+    if (clarao > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = claro ? 'multiply' : 'lighter';
+      ctx.fillStyle = rgba(cAcento, 0.11 * clarao);
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+    }
+    // o log sai um pouco antes, para não disputar espaço com a frase
+    if (t >= T_REVELA - 600) logEl.classList.add('recolhido');
+    if (dtRev >= 0 && !desfecho.classList.contains('no-ar')) {
+      desfecho.textContent =
+        `${agentes.length} agentes · ${fams.length} áreas · `
+        + `${PARES.length} pares de contraprova · 6 camadas de validação`;
+      desfecho.classList.add('no-ar');
+    }
+
+    // vinheta: puxa o olho para o centro numa tela grande
+    const vin = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.28, cx, cy, Math.hypot(w, h) * 0.62);
+    vin.addColorStop(0, rgba(T['--fundo'], 0));
+    vin.addColorStop(1, rgba(T['--fundo'], claro ? 0.28 : 0.62));
+    ctx.fillStyle = vin;
+    ctx.fillRect(0, 0, w, h);
+
     // esmaecimento final
-    if (t > T_ATO4 + 500) {
-      const f = clamp((t - T_ATO4 - 500) / (T_FIM - T_ATO4 - 500), 0, 1);
+    if (t > T_FIM - 900) {
+      const f = clamp((t - (T_FIM - 900)) / 900, 0, 1);
       ctx.fillStyle = rgba(T['--fundo'], f * 0.55);
       ctx.fillRect(0, 0, w, h);
     }
