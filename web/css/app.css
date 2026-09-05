@@ -644,6 +644,9 @@ table.tabela td strong { color: var(--tinta); font-weight: var(--peso-medio); }
   background: var(--fundo);
 }
 #abertura.saindo { opacity: 0; transition: opacity var(--dur-4) var(--curva); pointer-events: none; }
+/* volta por cima do painel depois do tempo ocioso: entra esmaecendo */
+#abertura.sobreposta { animation: abertura-surge 900ms var(--curva) both; }
+@keyframes abertura-surge { from { opacity: 0; } to { opacity: 1; } }
 #abertura .pular {
   position: absolute;
   right: var(--e-5);

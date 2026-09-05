@@ -272,33 +272,44 @@ function telaEntrada(aoEntrar) {
 }
 
 /* ------------------------------------------------------------- abertura --- */
-const CHAVE_ABERTURA = 'noria.abertura';
+/* Esta tela fica num painel central da empresa. A abertura roda toda vez que
+   alguém entra e volta sozinha depois de OCIOSO_MS sem ninguém tocar, para
+   que a parede nunca fique numa imagem parada. */
+const OCIOSO_MS = 5 * 60 * 1000;
 
-function aberturaJaVista() {
-  try { return sessionStorage.getItem(CHAVE_ABERTURA) === '1'; } catch { return false; }
-}
-function marcarAbertura() {
-  try { sessionStorage.setItem(CHAVE_ABERTURA, '1'); } catch { /* bloqueado */ }
-}
+let aberturaNoAr = false;
 
-function rodarAbertura(aoTerminar) {
+function rodarAbertura(aoTerminar, sobreposta = false) {
+  if (aberturaNoAr) return;
+  aberturaNoAr = true;
+
   const caixa = el('div', { id: 'abertura' }, [
     el('button.btn.btn-peq.pular', {
       type: 'button', texto: 'Pular abertura', onclick: () => { try { pular(); } catch { encerrar(); } },
     }),
   ]);
+  if (sobreposta) caixa.classList.add('sobreposta');
   document.body.appendChild(caixa);
-  marcarAbertura();
 
   let encerrada = false;
   function encerrar() {
     if (encerrada) return;
     encerrada = true;
+    aberturaNoAr = false;
     clearTimeout(cao);
+    sair.forEach((ev) => window.removeEventListener(ev, aoTocar, true));
     caixa.classList.add('saindo');
     setTimeout(() => caixa.remove(), 640);
     aoTerminar();
   }
+
+  // Quando a abertura entra por cima do painel, qualquer toque a dispensa na
+  // hora: quem chegou para usar o sistema não deve esperar a animação.
+  const sair = sobreposta
+    ? ['pointerdown', 'keydown', 'wheel', 'touchstart']
+    : [];
+  const aoTocar = () => { try { pular(); } catch { encerrar(); } };
+  sair.forEach((ev) => window.addEventListener(ev, aoTocar, true));
 
   // Cão de guarda: a abertura é enfeite, o sistema é o que importa. Se ela
   // travar por qualquer motivo, o painel entra no ar do mesmo jeito.
@@ -338,6 +349,27 @@ async function aplicacao() {
   };
   atualizar();
   setInterval(atualizar, 20000);
+
+  vigiarOcioso();
+}
+
+/* ---- volta da abertura depois de OCIOSO_MS parado --------------------- */
+let relogioOcioso = null;
+
+function vigiarOcioso() {
+  const eventos = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'];
+  const rearmar = () => {
+    clearTimeout(relogioOcioso);
+    relogioOcioso = setTimeout(() => {
+      // não entra por cima da tela de entrada nem de outra abertura
+      if (aberturaNoAr || !api.temSessao()) { rearmar(); return; }
+      if (document.hidden) { rearmar(); return; }
+      rodarAbertura(() => rearmar(), true);
+    }, OCIOSO_MS);
+  };
+  eventos.forEach((ev) => window.addEventListener(ev, rearmar, { passive: true }));
+  document.addEventListener('visibilitychange', rearmar);
+  rearmar();
 }
 
 function iniciar() {
@@ -351,12 +383,8 @@ function iniciar() {
     document.body.appendChild(telaEntrada(() => iniciar()));
     return;
   }
-  if (!aberturaJaVista()) {
-    limpar(document.body);
-    rodarAbertura(() => aplicacao());
-  } else {
-    aplicacao();
-  }
+  limpar(document.body);
+  rodarAbertura(() => aplicacao());
 }
 
 window.addEventListener('noria:sem-sessao', () => {

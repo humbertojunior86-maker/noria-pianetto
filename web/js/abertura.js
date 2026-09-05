@@ -55,22 +55,42 @@ function lerTokens() {
 
 /* ----- Retrato do cadastro (espelho de agentes/registro.py) ------------- */
 const AGENTES = [
-  { id: 'comercial.faturamento',  nome: 'Bruno',  area: 'faturamento' },
-  { id: 'comercial.inteligencia', nome: 'Sofia',  area: 'comercial' },
-  { id: 'controladoria.margem',   nome: 'Caio',   area: 'controladoria' },
-  { id: 'auditoria.interna',      nome: 'Lívia',  area: 'auditoria' },
-  { id: 'tesouraria.conciliador', nome: 'Marta',  area: 'tesouraria' },
-  { id: 'cobranca.carteira',      nome: 'Otávio', area: 'cobrança' },
-  { id: 'contas.pagar',           nome: 'Íris',   area: 'contas a pagar' },
-  { id: 'fiscal.documento',       nome: 'Alan',   area: 'fiscal' },
-  { id: 'fiscal.tributos',        nome: 'Téo',    area: 'tributos' },
-  { id: 'gente.documentos',       nome: 'Clara',  area: 'gente' },
-  { id: 'processos.rotina',       nome: 'Otto',   area: 'processos' },
-  { id: 'gente.jornada',          nome: 'Paula',  area: 'jornada' },
-  { id: 'frota.resultado',        nome: 'Davi',   area: 'frota' },
-  { id: 'frota.viagem',           nome: 'Nina',   area: 'viagem' },
-  { id: 'frota.combustivel',      nome: 'Rui',    area: 'combustível' }
+  { id: 'comercial.faturamento',  nome: 'Bruno',  area: 'faturamento',    fam: 'Comercial & Faturamento' },
+  { id: 'comercial.inteligencia', nome: 'Sofia',  area: 'comercial',      fam: 'Comercial & Faturamento' },
+  { id: 'controladoria.margem',   nome: 'Caio',   area: 'controladoria',  fam: 'Controladoria & Custos' },
+  { id: 'auditoria.interna',      nome: 'Lívia',  area: 'auditoria',      fam: 'Controladoria & Custos' },
+  { id: 'tesouraria.conciliador', nome: 'Marta',  area: 'tesouraria',     fam: 'Financeiro & Tesouraria' },
+  { id: 'cobranca.carteira',      nome: 'Otávio', area: 'cobrança',       fam: 'Financeiro & Tesouraria' },
+  { id: 'contas.pagar',           nome: 'Íris',   area: 'contas a pagar', fam: 'Financeiro & Tesouraria' },
+  { id: 'fiscal.documento',       nome: 'Alan',   area: 'fiscal',         fam: 'Fiscal & Contábil' },
+  { id: 'fiscal.tributos',        nome: 'Téo',    area: 'tributos',       fam: 'Fiscal & Contábil' },
+  { id: 'gente.documentos',       nome: 'Clara',  area: 'gente',          fam: 'Gente & Conformidade' },
+  { id: 'processos.rotina',       nome: 'Otto',   area: 'processos',      fam: 'Gente & Conformidade' },
+  { id: 'gente.jornada',          nome: 'Paula',  area: 'jornada',        fam: 'Gente & Conformidade' },
+  { id: 'frota.resultado',        nome: 'Davi',   area: 'frota',          fam: 'Operações & Frota' },
+  { id: 'frota.viagem',           nome: 'Nina',   area: 'viagem',         fam: 'Operações & Frota' },
+  { id: 'frota.combustivel',      nome: 'Rui',    area: 'combustível',    fam: 'Operações & Frota' }
 ];
+
+/* Agrupa por área — o campo vem do cadastro, não é invenção da abertura.
+   Devolve [{ fam, ids:[...], pares:[[i,j],...] }] com todos os pares da área. */
+function familias(lista) {
+  const mapa = new Map();
+  lista.forEach((a) => {
+    const k = a.fam || a.area || '—';
+    if (!mapa.has(k)) mapa.set(k, []);
+    mapa.get(k).push(a.id);
+  });
+  return [...mapa.entries()].map(([fam, ids]) => {
+    const pares = [];
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) pares.push([ids[i], ids[j]]);
+    }
+    return { fam, ids, pares };
+  });
+}
+
+const FAMILIAS_PADRAO = familias(AGENTES);
 
 /* Pares de contraprova ligados no núcleo (nucleo/orquestrador.py CONTRAPROVA) */
 const PARES = [
@@ -84,11 +104,14 @@ const T_MALHA = 2400;                    // cérebro totalmente formado
 const T_AG = 2150;                       // primeiro agente acende
 const PASSO_AG = 235;                    // intervalo entre agentes
 const T_AG_FIM = T_AG + PASSO_AG * (AGENTES.length - 1) + 420;
-const T_PAR = T_AG_FIM + 260;            // primeiro par de contraprova
-const PASSO_PAR = 520;
+const T_FAM = T_AG_FIM + 240;            // as áreas se fecham entre si
+const PASSO_FAM = 300;
+const T_FAM_FIM = T_FAM + PASSO_FAM * FAMILIAS_PADRAO.length + 200;
+const T_PAR = T_FAM_FIM + 180;           // primeiro par de contraprova
+const PASSO_PAR = 560;
 const T_PAR_FIM = T_PAR + PASSO_PAR * PARES.length;
-const T_ATO4 = T_PAR_FIM + 300;
-const T_FIM = T_ATO4 + 1250;
+const T_ATO4 = T_PAR_FIM + 320;
+const T_FIM = T_ATO4 + 1300;
 
 const MAX_LINHAS = 7;
 
@@ -232,7 +255,11 @@ export function abertura(el, aoTerminar) {
           const porId = new Map(lista.map((a) => [a.id, a]));
           agentes.forEach((a) => {
             const v = porId.get(a.id);
-            if (v) { a.nome = v.nome || a.nome; a.situacao = v.situacao || null; }
+            if (v) {
+              a.nome = v.nome || a.nome;
+              a.situacao = v.situacao || null;
+              a.fam = v.area || a.fam;
+            }
           });
           const hab = lista.filter((a) => a.situacao === 'habilitado').length;
           const rev = lista.filter((a) => a.situacao === 'revisor').length;
@@ -292,6 +319,12 @@ export function abertura(el, aoTerminar) {
       // resolvido na hora de escrever: a API pode ter respondido depois daqui
       txt: () => resumoEquipe || `${agentes.length} agentes no cadastro`
     });
+    roteiro.push({ t: T_FAM - 60, tipo: 'info', txt: 'fechando as áreas' });
+    FAMILIAS_PADRAO.forEach((f, i) => roteiro.push({
+      t: T_FAM + i * PASSO_FAM + 120,
+      tipo: 'ok',
+      txt: `${f.fam.toLowerCase()} · ${f.ids.length} agentes`
+    }));
     roteiro.push({ t: T_PAR - 60, tipo: 'info', txt: 'ligando os pares de contraprova' });
     PARES.forEach((p, i) => {
       const a = agentes.find((x) => x.id === p[0]);
@@ -349,6 +382,19 @@ export function abertura(el, aoTerminar) {
       cx1: mx + (nx / l) * l * desvio * 0.5,
       cy1: my + (ny / l) * l * desvio * 0.5
     };
+  }
+
+  /* Arco entre dois nós do anel, curvado por fora pelo lado curto.
+     Usar o ponto médio falha quando os dois são quase opostos: o meio cai
+     em cima do núcleo e a direção da curva vira ruído. */
+  function arcoEntre(a, b, cx, cy, folga) {
+    let dif = b.ang - a.ang;
+    while (dif > Math.PI) dif -= Math.PI * 2;
+    while (dif < -Math.PI) dif += Math.PI * 2;
+    const meio = a.ang + dif / 2;
+    const largo = Math.abs(dif) / Math.PI;
+    const fora = Math.hypot(a.x - cx, a.y - cy) * (1 + folga * (0.35 + largo));
+    return { cx1: cx + Math.cos(meio) * fora, cy1: cy + Math.sin(meio) * fora * 0.86 };
   }
 
   function pontoNaCurva(ax, ay, c1x, c1y, bx, by, t) {
@@ -482,6 +528,41 @@ export function abertura(el, aoTerminar) {
     /* Posições dos agentes: os pares desenham por baixo, os nós por cima. */
     const nos = anel(cx, cy, R);
 
+    /* ----- Áreas: cada agente ligado aos colegas da mesma área ---------- */
+    const fams = familias(agentes);
+    fams.forEach((f, iF) => {
+      const nasce = T_FAM + iF * PASSO_FAM;
+      const k = facilInOut(clamp((t - nasce) / 560, 0, 1));
+      if (k <= 0) return;
+      f.pares.forEach((par, iP) => {
+        const a = nos.find((n) => n.ref.id === par[0]);
+        const b = nos.find((n) => n.ref.id === par[1]);
+        if (!a || !b) return;
+        const arc = arcoEntre(a, b, cx, cy, 0.16);
+        ctx.save();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = rgba(cAcento, 0.34 * k * forca);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        const passos = 24;
+        for (let sN = 1; sN <= passos * k; sN++) {
+          const q = pontoNaCurva(a.x, a.y, arc.cx1, arc.cy1, b.x, b.y, sN / passos);
+          ctx.lineTo(q.x, q.y);
+        }
+        ctx.stroke();
+        ctx.restore();
+
+        // troca contínua dentro da área
+        if (k >= 1) {
+          const ciclo = 2200;
+          const fase = ((t - nasce - 560 + iP * 480 + iF * 260) % ciclo) / ciclo;
+          const pos = pontoNaCurva(a.x, a.y, arc.cx1, arc.cy1, b.x, b.y, fase);
+          ctx.fillStyle = rgba(cAcento, 0.8 * Math.sin(fase * Math.PI));
+          ctx.beginPath(); ctx.arc(pos.x, pos.y, 1.8, 0, 6.2832); ctx.fill();
+        }
+      });
+    });
+
     /* ----- Pares de contraprova ----------------------------------------- */
     PARES.forEach((par, i) => {
       const nasce = T_PAR + i * PASSO_PAR;
@@ -491,17 +572,8 @@ export function abertura(el, aoTerminar) {
       const b = nos.find((n) => n.ref.id === par[1]);
       if (!a || !b) return;
 
-      // Arco pelo lado curto do anel. Usar o ponto médio dos dois nós falha
-      // quando eles são quase opostos: o meio cai em cima do núcleo e a
-      // direção da curva vira ruído. O ângulo médio resolve sempre.
-      let dif = b.ang - a.ang;
-      while (dif > Math.PI) dif -= Math.PI * 2;
-      while (dif < -Math.PI) dif += Math.PI * 2;
-      const meio = a.ang + dif / 2;
-      const largo = Math.abs(dif) / Math.PI;               // 0 = vizinhos, 1 = opostos
-      const fora = Math.hypot(a.x - cx, a.y - cy) * (1 + 0.55 * largo);
-      const c1x = cx + Math.cos(meio) * fora;
-      const c1y = cy + Math.sin(meio) * fora * 0.86;
+      const arc = arcoEntre(a, b, cx, cy, 0.42);
+      const c1x = arc.cx1, c1y = arc.cy1;
 
       ctx.save();
       ctx.lineWidth = 1.35;
@@ -564,6 +636,15 @@ export function abertura(el, aoTerminar) {
         ctx.beginPath(); ctx.arc(pos.x, pos.y, 2.1, 0, 6.2832); ctx.fill();
       }
 
+      // ping de sonar no instante em que acende
+      const dtPing = t - nasce;
+      if (dtPing >= 0 && dtPing < 900) {
+        const kp = dtPing / 900;
+        ctx.strokeStyle = rgba(cAcento, 0.42 * (1 - kp));
+        ctx.lineWidth = 1.2 * (1 - kp) + 0.3;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 4 + kp * 26, 0, 6.2832); ctx.stroke();
+      }
+
       // nó do agente
       const revisor = p.ref.situacao === 'revisor';
       const cor = revisor ? cAtencao : cAcento;
@@ -573,17 +654,22 @@ export function abertura(el, aoTerminar) {
       ctx.fillStyle = rgba(cor, 0.92 * k);
       ctx.beginPath(); ctx.arc(p.x, p.y, 2.9 * k, 0, 6.2832); ctx.fill();
 
-      // rótulo, virado para fora
+      // Rótulo virado para fora. Ganha um halo da cor do fundo porque os
+      // arcos das áreas passam por cima e comeriam a legibilidade do nome.
+      ctx.save();
       ctx.textAlign = p.direita ? 'left' : 'right';
+      ctx.shadowColor = rgba(T['--fundo'], 0.95);
+      ctx.shadowBlur = 7;
       const dx = p.direita ? 12 : -12;
-      ctx.fillStyle = rgba(T['--tinta-2'], 0.9 * k);
+      ctx.fillStyle = rgba(T['--tinta-2'], 0.95 * k);
       ctx.fillText(p.ref.nome, p.x + dx, p.y - (compacto ? 0 : 5));
       if (!compacto) {
         ctx.font = `400 ${fonte - 1.5}px ${T['--mono']}`;
-        ctx.fillStyle = rgba(T['--tinta-4'], 0.95 * k);
+        ctx.fillStyle = rgba(T['--tinta-3'], 0.95 * k);
         ctx.fillText(p.ref.area, p.x + dx, p.y + 7);
         ctx.font = `600 ${fonte}px ${T['--mono']}`;
       }
+      ctx.restore();
     });
 
     // esmaecimento final
