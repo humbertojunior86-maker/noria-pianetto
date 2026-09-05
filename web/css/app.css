@@ -1116,3 +1116,362 @@ a.ceo-dia:hover { border-color: var(--linha-3); background: var(--painel-alto); 
 @media (max-width: 520px) {
   .ceo-equipe { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ==========================================================================
+   Ritmo do dia — a faixa que mostra a agenda da NÓRIA na Sala do CEO.
+   Nasceu de "parece que está tudo parado": entre uma varredura e outra o
+   sistema fica em silêncio, e silêncio sem agenda visível parece defeito.
+   Régua, pulso e fala. Sem cor decorativa: cor aqui significa estado.
+   ========================================================================== */
+.ritmo {
+  background: var(--painel);
+  border: 1px solid var(--linha-2);
+  border-radius: var(--raio-md);
+  box-shadow: var(--sombra-1);
+}
+.ritmo-cab {
+  display: flex;
+  align-items: baseline;
+  gap: var(--e-3);
+  padding: var(--e-4) var(--e-5);
+  border-bottom: 1px solid var(--linha);
+}
+.ritmo-cab h3 { font-size: var(--t-base); letter-spacing: -.01em; }
+.ritmo-cab .ritmo-nota {
+  margin: 0 0 0 auto;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--letra-larga);
+  text-transform: uppercase;
+  color: var(--tinta-3);
+}
+/* Duas colunas: à esquerda o dia, à direita a fala. A régua manda, por isso
+   fica com mais largura. */
+.ritmo-corpo {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: var(--e-6);
+  padding: var(--e-5);
+}
+.ritmo-coluna { display: flex; flex-direction: column; gap: var(--e-4); min-width: 0; }
+
+/* ------------------------------------------------------- 1. linha do dia -- */
+/* A leitura fica acima da régua e não em balão: balão tapa a régua justamente
+   onde o olho está apontando. */
+.ritmo-leitor {
+  margin: 0;
+  min-height: 18px;
+  font-size: var(--t-mini);
+  color: var(--tinta-3);
+  font-family: var(--mono);
+  letter-spacing: .02em;
+}
+.ritmo-leitor.vivo { color: var(--tinta); }
+
+.ritmo-regua { padding: var(--e-5) 24px 0; }
+.ritmo-trilho { position: relative; height: 22px; }
+.ritmo-eixo {
+  position: absolute;
+  left: 0; right: 0; top: 10px;
+  height: 2px;
+  background: var(--linha-2);
+  border-radius: var(--raio-total);
+}
+/* O trecho do dia que já passou fica levemente aceso: mostra o quanto a NÓRIA
+   já percorreu sem precisar de legenda. */
+.ritmo-percorrido {
+  position: absolute;
+  left: 0; top: 10px;
+  height: 2px;
+  background: var(--tinta-4);
+  border-radius: var(--raio-total);
+}
+.ritmo-marca {
+  position: absolute;
+  top: 7px;
+  width: 1px;
+  height: 8px;
+  background: var(--linha-2);
+}
+.ritmo-agora { position: absolute; top: -14px; height: 40px; }
+.ritmo-agora-traco {
+  position: absolute;
+  left: 0; top: 12px;
+  width: 1px;
+  height: 26px;
+  background: var(--acento);
+  opacity: .75;
+}
+.ritmo-agora-rot {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--letra-larga);
+  text-transform: uppercase;
+  color: var(--acento);
+}
+/* Ponto de varredura: alvo de mouse maior que o desenho, para não obrigar
+   pontaria. O desenho é o <i> de dentro. */
+.ritmo-ponto {
+  position: absolute;
+  top: 1px;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  cursor: default;
+}
+.ritmo-ponto i {
+  width: 11px;
+  height: 11px;
+  border-radius: var(--raio-total);
+  border: 1px solid var(--tinta-4);
+  background: var(--painel);
+  transition: transform var(--dur-1) var(--curva);
+}
+.ritmo-ponto.feito i { background: var(--ok); border-color: var(--ok); }
+.ritmo-ponto.atrasado i { background: var(--atencao); border-color: var(--atencao); }
+.ritmo-ponto.previsto i { background: var(--painel-alto); border-color: var(--tinta-4); }
+.ritmo-ponto:hover i, .ritmo-ponto:focus-visible i { transform: scale(1.45); }
+.ritmo-ponto:focus-visible { outline: none; box-shadow: none; }
+.ritmo-ponto:focus-visible i { border-color: var(--acento); }
+
+.ritmo-horas { position: relative; height: 16px; margin-top: 2px; }
+.ritmo-horas span {
+  position: absolute;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--tinta-4);
+}
+
+/* A régua é o desenho; a lista é o mesmo dia escrito, e é ela que sustenta a
+   leitura no celular e no leitor de tela. */
+.ritmo-itens { list-style: none; margin: var(--e-4) 0 0; padding: 0; }
+.ritmo-itens li {
+  display: grid;
+  grid-template-columns: 34px 10px minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: var(--e-2);
+  padding: var(--e-2) 0;
+  border-top: 1px solid var(--linha);
+  font-size: var(--t-peq);
+}
+.ritmo-itens li:first-child { border-top: 0; }
+.ritmo-itens .ritmo-h {
+  font-family: var(--mono);
+  font-size: var(--t-mini);
+  color: var(--tinta-3);
+  font-variant-numeric: tabular-nums;
+}
+.ritmo-itens .ritmo-pt {
+  width: 8px; height: 8px;
+  border-radius: var(--raio-total);
+  background: var(--painel-alto);
+  border: 1px solid var(--tinta-4);
+  align-self: center;
+}
+.ritmo-itens li.feito .ritmo-pt { background: var(--ok); border-color: var(--ok); }
+.ritmo-itens li.atrasado .ritmo-pt { background: var(--atencao); border-color: var(--atencao); }
+.ritmo-itens .ritmo-n { grid-column: 3; color: var(--tinta); min-width: 0; }
+.ritmo-itens .ritmo-ag { grid-column: 4; color: var(--tinta-3); font-size: var(--t-mini); white-space: nowrap; }
+.ritmo-itens .ritmo-est {
+  grid-column: 5;
+  min-width: 92px;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--letra-larga);
+  text-transform: uppercase;
+  color: var(--tinta-3);
+  white-space: nowrap;
+}
+.ritmo-itens li.feito .ritmo-est { color: var(--ok); }
+.ritmo-itens li.atrasado .ritmo-est { color: var(--atencao); }
+
+/* A frase é o que o dono lê primeiro; por isso tem peso de texto, não de
+   etiqueta. */
+.ritmo-frase {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e-1);
+  padding: var(--e-3) var(--e-4);
+  border: 1px solid var(--linha);
+  border-left: 2px solid var(--tinta-4);
+  border-radius: var(--raio-min);
+  background: var(--painel-fundo);
+}
+.ritmo-frase b { font-size: var(--t-peq); font-weight: var(--peso-medio); color: var(--tinta); }
+.ritmo-frase span { font-size: var(--t-mini); color: var(--tinta-3); line-height: var(--altura-media); }
+.ritmo-frase.calmo { border-left-color: var(--acento-linha); }
+.ritmo-frase.atencao { border-left-color: var(--atencao); }
+.ritmo-frase.atencao b { color: var(--atencao); }
+
+/* ---------------------------------------------------- 2. pulso da vigília -- */
+.ritmo-pulso {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--e-3) var(--e-6);
+  padding-top: var(--e-3);
+  border-top: 1px solid var(--linha);
+}
+.ritmo-vigilia { display: flex; align-items: center; gap: var(--e-3); min-width: 0; }
+.ritmo-marcador { position: relative; width: 28px; height: 28px; flex: none; }
+.ritmo-anel { width: 28px; height: 28px; transform: rotate(-90deg); }
+.ritmo-anel .trilha { fill: none; stroke: var(--linha-2); stroke-width: 2; }
+/* O arco fecha uma volta a cada intervalo real da sentinela — é relógio, não
+   animação de espera. */
+.ritmo-anel .arco {
+  fill: none;
+  stroke: var(--acento);
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 900ms linear;
+}
+.ritmo-nucleo {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 8px; height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: var(--raio-total);
+  background: var(--acento);
+  animation: bater 2.4s var(--curva-suave) infinite;
+}
+.ritmo-nucleo.parado { background: var(--tinta-4); animation: none; }
+.ritmo-vig-texto { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ritmo-vig-texto b { font-size: var(--t-peq); font-weight: var(--peso-medio); color: var(--tinta-2); }
+.ritmo-vig-quando {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--letra-larga);
+  text-transform: uppercase;
+  color: var(--tinta-3);
+}
+.ritmo-equipe { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ritmo-equipe b { font-size: var(--t-peq); font-weight: var(--peso-medio); color: var(--tinta-2); }
+.ritmo-equipe span { font-size: var(--t-mini); color: var(--tinta-3); line-height: var(--altura-media); }
+
+/* ------------------------------------------------- 3. o que a NÓRIA disse -- */
+.ritmo-lado { display: flex; flex-direction: column; gap: var(--e-3); min-width: 0; }
+.ritmo-lado h4 {
+  font-family: var(--corpo);
+  font-size: var(--t-mini);
+  font-weight: var(--peso-medio);
+  letter-spacing: var(--letra-larga);
+  text-transform: uppercase;
+  color: var(--tinta-3);
+}
+.ritmo-dito { border-top: 1px solid var(--linha); }
+.ritmo-falas { list-style: none; margin: 0; padding: 0; }
+.ritmo-fala {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: var(--e-3);
+  padding: var(--e-3) 0;
+  border-bottom: 1px solid var(--linha);
+}
+.ritmo-fala:last-child { border-bottom: 0; }
+.ritmo-fala .ritmo-fala-marca { padding-top: 5px; }
+.ritmo-fala .ritmo-pt {
+  display: block;
+  width: 7px; height: 7px;
+  margin-left: 1px;
+  border-radius: var(--raio-total);
+  background: var(--tinta-4);
+}
+.ritmo-fala.ok .ritmo-pt { background: var(--ok); }
+.ritmo-fala.erro .ritmo-pt { background: var(--erro); }
+.ritmo-fala.atencao .ritmo-pt { background: var(--atencao); }
+.ritmo-fala .ritmo-fala-corpo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ritmo-fala .ritmo-cabeca { display: flex; align-items: baseline; gap: var(--e-2); flex-wrap: wrap; }
+.ritmo-fala .ritmo-cabeca b { font-size: var(--t-peq); font-weight: var(--peso-medio); color: var(--tinta); }
+.ritmo-fala p {
+  margin: 0;
+  font-size: var(--t-peq);
+  color: var(--tinta-2);
+  line-height: var(--altura-media);
+  overflow-wrap: anywhere;
+}
+.ritmo-fala .ritmo-meta {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--letra-larga);
+  text-transform: uppercase;
+  color: var(--tinta-3);
+}
+/* Entrega "bloqueada" é o agente dizendo que não havia o que fazer: é
+   informação, não falha. Fica em tinta neutra, sem vermelho e sem alarme. */
+.ritmo-decl {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  letter-spacing: var(--letra-larga);
+  text-transform: uppercase;
+  color: var(--tinta-3);
+  white-space: nowrap;
+}
+.ritmo-decl.ok { color: var(--ok); }
+.ritmo-decl.atencao { color: var(--atencao); }
+.ritmo-decl.erro { color: var(--erro); }
+.ritmo-decl.acento { color: var(--acento); }
+/* O que está acontecendo agora sobe para o topo e é a única linha com fundo:
+   destaque por superfície, não por cor gritante. */
+.ritmo-fala.agora {
+  background: var(--acento-fundo);
+  border-radius: var(--raio-min);
+  padding: var(--e-3);
+  margin-bottom: var(--e-1);
+  border-bottom: 0;
+}
+.ritmo-fala.agora .ritmo-fala-marca { padding-top: 6px; }
+.ritmo-quieto {
+  margin: 0;
+  padding: var(--e-3) 0;
+  font-size: var(--t-peq);
+  color: var(--tinta-3);
+  line-height: var(--altura-media);
+}
+.ritmo-falha {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e-1);
+  margin: var(--e-5);
+  padding: var(--e-3) var(--e-4);
+  border: 1px solid var(--erro);
+  border-radius: var(--raio-min);
+  background: var(--erro-fundo);
+}
+.ritmo-falha b { font-size: var(--t-peq); color: var(--erro); }
+.ritmo-falha span { font-size: var(--t-mini); color: var(--tinta-2); line-height: var(--altura-media); }
+
+/* ------------------------------------------------------- ritmo estreito --- */
+@media (max-width: 1100px) {
+  .ritmo-corpo { grid-template-columns: minmax(0, 1fr); gap: var(--e-5); }
+  .ritmo-lado { border-top: 1px solid var(--linha); padding-top: var(--e-4); }
+}
+
+@media (max-width: 620px) {
+  /* A régua continua, com metade dos rótulos de hora: melhor quatro horas
+     legíveis do que sete borradas. A lista embaixo carrega o resto. */
+  .ritmo-corpo { padding: var(--e-4); }
+  .ritmo-regua { padding: var(--e-5) 20px 0; }
+  .ritmo-horas span:nth-child(even) { display: none; }
+  .ritmo-itens li {
+    grid-template-columns: 30px 10px minmax(0, 1fr);
+    row-gap: 0;
+    padding: var(--e-2) 0;
+  }
+  .ritmo-itens .ritmo-ag { grid-column: 3; white-space: normal; }
+  .ritmo-itens .ritmo-est { grid-column: 3; min-width: 0; text-align: left; }
+  .ritmo-cab { flex-direction: column; gap: var(--e-1); }
+  .ritmo-cab .ritmo-nota { margin-left: 0; text-align: left; }
+  .ritmo-pulso { gap: var(--e-4); }
+}

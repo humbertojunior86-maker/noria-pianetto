@@ -145,10 +145,13 @@ ROTINAS = [
     ("conciliacao", "conciliação diária", 6, None, conciliacao_diaria),
     ("receber90", "cobrança: a receber +90 dias", 7, {0}, None),
     ("pagar30", "contas a pagar: vencidos +30 dias", 7, {2}, None),
-    ("cte_sem_titulo", "faturamento: frete entregue sem título", 11, {1, 3},
-     None),
+    ("cte_sem_titulo", "faturamento: frete entregue sem título", 11,
+     {1, 3, 5}, None),
+    # Sábado entra aqui de propósito: CT-e preso na SEFAZ e frete entregue sem
+    # título não esperam segunda-feira, e a operação da Pianetto roda no
+    # sábado. Domingo a NÓRIA só concilia — descanso também é decisão.
     ("cte_pendente", "fiscal: CT-e sem autorização da SEFAZ", 12,
-     {0, 1, 2, 3, 4}, None),
+     {0, 1, 2, 3, 4, 5}, None),
     ("receber30", "cobrança: a receber +30 dias", 13, {0, 2, 4}, None),
     ("duplicidade", "contas a pagar: pagamento em duplicidade", 14, {0}, None),
     ("cliente_sumiu", "comercial: cliente que parou de faturar", 15, {3}, None),

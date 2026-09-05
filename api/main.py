@@ -477,6 +477,79 @@ def testar(iid: str, s: dict = Depends(sessao)):
     return {"estado": estado, "detalhe": r.resumo or r.erro}
 
 
+
+# --------------------------------------------------------------- ritmo do dia
+@app.get("/api/agenda")
+def agenda(s: dict = Depends(sessao)):
+    """O dia da NÓRIA: o que já rodou, o que está rodando, o que vem depois.
+
+    Existe porque o sistema parecia morto entre uma varredura e outra. Estava
+    apenas em silêncio — mas silêncio sem agenda visível é indistinguível de
+    defeito. Agora o repouso tem hora marcada e o CEO vê a fila do dia.
+    """
+    import agendador as ag
+
+    emp = s["empresa_id"]
+    agora = datetime.now(bd.FUSO)
+    hoje = agora.date()
+    dia = hoje.weekday()
+
+    itens = []
+    for chave, nome, hora, dias, _fn in ag.ROTINAS:
+        if dias is not None and dia not in dias:
+            continue
+        # O agendador grava a data como JSON simples ("2026-09-05"), não como
+        # objeto. Ler com .get() estourava a rota inteira em AttributeError.
+        marcador = bd.linha("SELECT valor FROM marcador WHERE chave=?",
+                            (f"rotina:{chave}", ))
+        rodou = bool(marcador) and \
+            bd.dj(marcador["valor"], None) == hoje.isoformat()
+        agente = (ag.VIGILANCIA.get(chave) or (None,))[0] \
+            or ("tesouraria.conciliador" if chave == "conciliacao"
+                else "cobranca.carteira")
+        d = ar.obter(agente)
+        itens.append({
+            "chave": chave, "nome": nome, "hora": hora,
+            "agente_id": agente, "agente": d.nome if d else agente,
+            "estado": "feito" if rodou else
+                      ("atrasado" if agora.hour > hora else "previsto"),
+        })
+
+    # Sentinela: não tem hora, tem intervalo. É o que dá pulso ao resto.
+    # A chave é a que a sentinela realmente grava. Antes eu inventei um nome
+    # parecido, e a vigília aparecia morta mesmo estando viva.
+    ultimo = bd.linha("SELECT valor FROM marcador WHERE chave=?",
+                      ("pulso.faturamento", ))
+    vigilia = (bd.dj(ultimo["valor"], {}) or {}).get("em") if ultimo else None
+
+    return {
+        "hoje": hoje.isoformat(),
+        "agora": agora.isoformat(),
+        "dia_util": dia < 5,
+        "itens": sorted(itens, key=lambda x: x["hora"]),
+        "feitos": sum(1 for i in itens if i["estado"] == "feito"),
+        "vigilia": {
+            "intervalo_s": ag.INTERVALO_VIGILIA,
+            "ultima_leitura": vigilia,
+        },
+        "agentes": {
+            "total": len(ar.todos()),
+            "operando": sum(1 for d in ar.todos()
+                            if d.situacao()[0] == "habilitado"),
+        },
+        "em_curso": bd.linhas(
+            "SELECT t.id, t.agente_id, t.estado, t.atualizada_em, m.objetivo "
+            "FROM tarefa t JOIN missao m ON m.id = t.missao_id "
+            "WHERE t.empresa_id=? AND t.estado IN "
+            "('despachada','executando') ORDER BY t.id DESC LIMIT 10", (emp,)),
+        "ultimas_entregas": bd.linhas(
+            "SELECT e.id, e.resumo, e.status_declarado, e.criada_em, "
+            "       t.agente_id, t.estado AS veredito "
+            "FROM entrega e JOIN tarefa t ON t.id = e.tarefa_id "
+            "WHERE e.empresa_id=? ORDER BY e.id DESC LIMIT 8", (emp,)),
+    }
+
+
 # ------------------------------------------------------------------- estático
 WEB = RAIZ / "web"
 if WEB.is_dir():

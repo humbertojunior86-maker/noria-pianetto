@@ -441,14 +441,425 @@ function operacao(d, ir) {
   ]);
 }
 
+/* ------------------------------------------------------ ritmo do dia ---- */
+/* Esta faixa existe por uma frase do dono: "parece que está tudo parado, nada
+   acontece". Ele estava certo sobre a tela e errado sobre o sistema — entre uma
+   varredura e outra a NÓRIA fica em silêncio, e silêncio sem agenda visível é
+   indistinguível de defeito. Aqui o repouso ganha hora marcada. */
+
+const RITMO_MS = 20000;   /* a faixa se refaz sozinha sem tocar nos grandes números */
+const HORA_INI = 6;       /* a agenda do dia vai das 6h (conciliação) ... */
+const HORA_FIM = 18;      /* ... às 18h (fechamento do dia) */
+
+const DIAS_SEMANA = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira',
+  'quinta-feira', 'sexta-feira', 'sábado'];
+const MESES_LONGOS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+/** Hora em fração do dia (14:30 → 14,5) a partir de um ISO com fuso. */
+function horaFracao(iso) {
+  const m = String(iso || '').match(/[T ](\d{2}):(\d{2})/);
+  if (!m) return null;
+  return Number(m[1]) + Number(m[2]) / 60;
+}
+
+/** Posição na régua, em porcentagem, presa entre as bordas. */
+function posicao(h) {
+  const p = ((h - HORA_INI) / (HORA_FIM - HORA_INI)) * 100;
+  return Math.min(100, Math.max(0, p));
+}
+
+/** "sábado, 5 de setembro" — quem lê numa TV não decifra 2026-09-05. */
+function diaPorExtenso(iso) {
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return f.NADA;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return `${DIAS_SEMANA[d.getDay()]}, ${Number(m[3])} de ${MESES_LONGOS[Number(m[2]) - 1]}`;
+}
+
+/** O código do agente só aparece quando não se sabe o nome dele. */
+function nomeAgente(id, nomes) {
+  if (!id) return 'sem agente declarado';
+  return (nomes && nomes[id]) || id;
+}
+
+/* Status declarado pelo agente. "bloqueada" não é falha do sistema: é o agente
+   dizendo que não havia o que fazer. Pintar isso de vermelho ensina o dono a
+   ignorar vermelho — e aí o vermelho de verdade também passa batido. */
+const DECLARADO = {
+  concluida: ['entregou o resultado', 'ok'],
+  bloqueada: ['não havia o que fazer', 'neutro'],
+  parcial: ['entregou em parte', 'atencao'],
+  falha: ['não conseguiu concluir', 'erro'],
+};
+
+function declarado(s) {
+  const v = DECLARADO[s];
+  return v ? { texto: v[0], tom: v[1] } : { texto: s || 'sem status declarado', tom: 'neutro' };
+}
+
+/** A frase honesta embaixo da régua: o que vem depois, com nome, hora e agente. */
+function fraseDoDia(itens, agoraH) {
+  const pendentes = itens.filter((i) => i.estado !== 'feito');
+  const atrasados = pendentes.filter((i) => i.estado === 'atrasado');
+  const previstos = pendentes
+    .filter((i) => i.estado === 'previsto')
+    .sort((a, b) => a.hora - b.hora);
+  const proxima = previstos.find((i) => i.hora >= Math.floor(agoraH === null ? 0 : agoraH))
+    || previstos[0] || null;
+
+  if (!itens.length) {
+    return {
+      principal: 'Hoje a NÓRIA não tem varredura marcada.',
+      apoio: 'A agenda de cada dia é montada na virada — a sentinela continua olhando o faturamento.',
+      tom: 'calmo',
+    };
+  }
+  if (proxima) {
+    return {
+      principal: `Próxima: ${proxima.nome}, às ${proxima.hora}h, com ${proxima.agente}.`,
+      apoio: atrasados.length
+        ? `${atrasados.length === 1 ? 'Uma varredura passou' : `${atrasados.length} varreduras passaram`} da hora sem rodar: ${atrasados.map((i) => `${i.nome} (${i.hora}h)`).join('; ')}.`
+        : 'Até lá a NÓRIA fica em repouso — só a sentinela continua olhando o faturamento.',
+      tom: atrasados.length ? 'atencao' : 'calmo',
+    };
+  }
+  if (atrasados.length) {
+    return {
+      principal: `${atrasados.length === 1 ? 'Falta rodar' : 'Faltam rodar'}: ${atrasados.map((i) => `${i.nome} (${i.hora}h, com ${i.agente})`).join('; ')}.`,
+      apoio: 'Passou da hora marcada e a varredura ainda não abriu missão.',
+      tom: 'atencao',
+    };
+  }
+  return {
+    principal: 'A NÓRIA já fez tudo o que tinha para hoje. A próxima varredura é amanhã às 6h.',
+    apoio: 'A agenda é remontada na virada do dia — o silêncio daqui até lá é repouso, não pane.',
+    tom: 'calmo',
+  };
+}
+
+/* ------------------------------------------------------- 1. linha do dia -- */
+
+const ESTADO_TXT = {
+  feito: 'já rodou',
+  atrasado: 'passou da hora',
+  previsto: 'ainda vai rodar',
+};
+
+function linhaDoDia(dados, leitura) {
+  const itens = Array.isArray(dados.itens) ? dados.itens : [];
+  const agoraH = horaFracao(dados.agora);
+  const marcas = [6, 8, 10, 12, 14, 16, 18];
+
+  const trilho = el('div.ritmo-trilho', { 'aria-hidden': 'true' }, [
+    el('div.ritmo-eixo'),
+    /* O trecho já vencido do dia fica mais aceso: o olho lê de imediato
+       quanto do dia a NÓRIA já percorreu. */
+    agoraH === null ? null : el('div.ritmo-percorrido', { style: `width:${posicao(agoraH)}%` }),
+    ...marcas.map((h) => el('i.ritmo-marca', { style: `left:${posicao(h)}%` })),
+  ]);
+
+  /* O "agora" é a única linha vertical da régua — se houvesse outra, deixaria
+     de ser a referência imediata do olhar. */
+  if (agoraH !== null) {
+    const dentro = agoraH >= HORA_INI && agoraH <= HORA_FIM;
+    juntar(trilho, el('div.ritmo-agora', { style: `left:${posicao(agoraH)}%` }, [
+      el('span.ritmo-agora-rot', {
+        texto: dentro ? `agora ${f.hora(dados.agora)}` : `${f.hora(dados.agora)} · fora da janela`,
+      }),
+      el('i.ritmo-agora-traco'),
+    ]));
+  }
+
+  itens.forEach((i) => {
+    juntar(trilho, el(`div.ritmo-ponto.${i.estado}`, {
+      style: `left:${posicao(i.hora)}%`,
+      tabindex: '0',
+      title: `${i.hora}h · ${i.nome} · com ${i.agente} · ${ESTADO_TXT[i.estado] || i.estado}`,
+      onmouseenter: () => leitura(i),
+      onmouseleave: () => leitura(null),
+      onfocus: () => leitura(i),
+      onblur: () => leitura(null),
+    }, [el('i')]));
+  });
+
+  const rotulos = el('div.ritmo-horas', { 'aria-hidden': 'true' }, marcas.map((h) =>
+    el('span', { style: `left:${posicao(h)}%`, texto: `${h}h` })));
+
+  /* A régua é gráfica; a lista abaixo é o mesmo dia escrito. No celular ela vira
+     a forma principal — encolher a régua até virar borrão seria fingir que cabe. */
+  const lista = el('ul.ritmo-itens', null, itens.map((i) => el(`li.${i.estado}`, null, [
+    el('span.ritmo-h', { texto: `${i.hora}h` }),
+    el('i.ritmo-pt'),
+    el('span.ritmo-n', { texto: i.nome }),
+    el('span.ritmo-ag', { texto: `com ${i.agente}` }),
+    el('span.ritmo-est', { texto: ESTADO_TXT[i.estado] || i.estado }),
+  ])));
+
+  return el('div.ritmo-regua', null, [trilho, rotulos, itens.length ? lista : null]);
+}
+
+/* ---------------------------------------------------- 2. pulso da vigília -- */
+
+function pulsoVigilia(dados) {
+  const v = dados.vigilia || {};
+  const intervalo = Number(v.intervalo_s) || 0;
+  const ag = dados.agentes || {};
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const anel = document.createElementNS(ns, 'svg');
+  anel.setAttribute('viewBox', '0 0 28 28');
+  anel.setAttribute('class', 'ritmo-anel');
+  anel.setAttribute('aria-hidden', 'true');
+  const trilha = document.createElementNS(ns, 'circle');
+  trilha.setAttribute('cx', '14'); trilha.setAttribute('cy', '14'); trilha.setAttribute('r', '11');
+  trilha.setAttribute('class', 'trilha');
+  const arco = document.createElementNS(ns, 'circle');
+  arco.setAttribute('cx', '14'); arco.setAttribute('cy', '14'); arco.setAttribute('r', '11');
+  arco.setAttribute('class', 'arco');
+  const volta = 2 * Math.PI * 11;
+  arco.setAttribute('stroke-dasharray', volta.toFixed(2));
+  arco.setAttribute('stroke-dashoffset', volta.toFixed(2));
+  anel.appendChild(trilha);
+  anel.appendChild(arco);
+
+  const nucleo = el('i.ritmo-nucleo');
+  const quando = el('span.ritmo-vig-quando');
+
+  /* O pulso não é enfeite: o arco fecha uma volta a cada `intervalo_s` reais,
+     contados desde a última leitura. Assim dá para ver quanto falta para a
+     próxima — um GIF girando diria "vivo" mesmo com a sentinela morta. */
+  function bater() {
+    if (!v.ultima_leitura || !intervalo) {
+      arco.setAttribute('stroke-dashoffset', volta.toFixed(2));
+      nucleo.classList.add('parado');
+      quando.textContent = 'ainda não fez a primeira leitura de hoje';
+      return;
+    }
+    const t = Date.parse(v.ultima_leitura);
+    if (Number.isNaN(t)) {
+      nucleo.classList.add('parado');
+      quando.textContent = 'a última leitura veio com data ilegível';
+      return;
+    }
+    const decorrido = Math.max(0, (Date.now() - t) / 1000);
+    const fracao = Math.min(1, (decorrido % intervalo) / intervalo);
+    arco.setAttribute('stroke-dashoffset', (volta * (1 - fracao)).toFixed(2));
+    nucleo.classList.remove('parado');
+    const min = Math.floor(decorrido / 60);
+    quando.textContent = decorrido < 90
+      ? `última leitura há ${Math.floor(decorrido)} segundos`
+      : `última leitura há ${min} ${min === 1 ? 'minuto' : 'minutos'}`;
+  }
+  bater();
+
+  const minutos = intervalo ? Math.round(intervalo / 60) : null;
+  const total = Number(ag.total);
+  const operando = Number(ag.operando);
+  const temEquipe = Number.isFinite(total) && Number.isFinite(operando);
+
+  const no = el('div.ritmo-pulso', null, [
+    el('div.ritmo-vigilia', null, [
+      el('div.ritmo-marcador', null, [anel, nucleo]),
+      el('div.ritmo-vig-texto', null, [
+        el('b', {
+          texto: minutos
+            ? `A sentinela olha o faturamento a cada ${minutos} ${minutos === 1 ? 'minuto' : 'minutos'}`
+            : 'A sentinela olha o faturamento em intervalo não informado',
+        }),
+        quando,
+      ]),
+    ]),
+    el('div.ritmo-equipe', null, [
+      el('b', {
+        texto: temEquipe
+          ? `${f.numero(operando)} de ${f.numero(total)} agentes com trabalho ligado`
+          : 'a API não informou quantos agentes estão ligados',
+      }),
+      temEquipe
+        ? el('span', {
+          texto: `Os outros ${f.numero(total - operando)} não são defeito: são o mapa do que ainda falta construir.`,
+        })
+        : null,
+    ]),
+  ]);
+
+  return { no, bater };
+}
+
+/* ------------------------------------------------- 3. o que a NÓRIA disse -- */
+
+function acabouDeDizer(dados, nomes) {
+  const emCurso = Array.isArray(dados.em_curso) ? dados.em_curso : [];
+  const entregas = Array.isArray(dados.ultimas_entregas) ? dados.ultimas_entregas : [];
+  const linhas = [];
+
+  emCurso.forEach((t) => {
+    linhas.push(el('li.ritmo-fala.agora', null, [
+      el('div.ritmo-fala-marca', null, [el('i.pulso.vivo')]),
+      el('div.ritmo-fala-corpo', null, [
+        el('div.ritmo-cabeca', null, [
+          el('b', { texto: nomeAgente(t.agente_id, nomes) }),
+          el('span.ritmo-decl.acento', { texto: 'acontecendo agora' }),
+        ]),
+        el('p', { texto: f.textoBr(t.objetivo || `tarefa ${t.id}`) }),
+        el('span.ritmo-meta', {
+          texto: `${f.estadoTarefa(t.estado).texto.toLowerCase()} · ${haQuanto(t.atualizada_em) || f.dataHora(t.atualizada_em)}`,
+        }),
+      ]),
+    ]));
+  });
+
+  entregas.slice(0, emCurso.length ? 4 : 5).forEach((e) => {
+    const d = declarado(e.status_declarado);
+    const ver = f.estadoTarefa(e.veredito);
+    linhas.push(el(`li.ritmo-fala.${d.tom}`, null, [
+      el('div.ritmo-fala-marca', null, [el('i.ritmo-pt')]),
+      el('div.ritmo-fala-corpo', null, [
+        el('div.ritmo-cabeca', null, [
+          el('b', { texto: nomeAgente(e.agente_id, nomes) }),
+          el(`span.ritmo-decl.${d.tom}`, { texto: d.texto }),
+        ]),
+        el('p', { texto: f.textoBr(e.resumo || 'entrega sem resumo escrito') }),
+        el('span.ritmo-meta', {
+          title: f.dataHora(e.criada_em),
+          texto: `${haQuanto(e.criada_em) || f.dataHora(e.criada_em)} · validação: ${ver.texto.toLowerCase()}`,
+        }),
+      ]),
+    ]));
+  });
+
+  if (!linhas.length) {
+    return el('div.ritmo-dito', null,
+      el('p.ritmo-quieto', {
+        texto: 'Nenhuma entrega registrada ainda. Quando um agente concluir, a frase dele aparece aqui.',
+      }));
+  }
+
+  return el('div.ritmo-dito', null, el('ul.ritmo-falas', null, linhas));
+}
+
+/* ------------------------------------------------------ montagem da faixa -- */
+
+/** A faixa cuida da própria atualização: 20 s, sem redesenhar a tela nem piscar
+    os grandes números, que têm outro ritmo (60 s) e outro custo no ERP. */
+function faixaRitmo({ nomes }) {
+  const caixa = el('section.ritmo');
+  let baterVigilia = null;
+  let vivo = true;
+  let ultimos = null;   /* última resposta desenhada, para redesenhar sem reler */
+
+  function desenhar(dados) {
+    const itens = Array.isArray(dados.itens) ? dados.itens : [];
+    const feitos = Number.isFinite(Number(dados.feitos))
+      ? Number(dados.feitos)
+      : itens.filter((i) => i.estado === 'feito').length;
+    const frase = fraseDoDia(itens, horaFracao(dados.agora));
+
+    const resumo = itens.length
+      ? `${f.numero(itens.length)} ${itens.length === 1 ? 'varredura marcada hoje' : 'varreduras marcadas hoje'} · ${f.numero(feitos)} já ${feitos === 1 ? 'rodou' : 'rodaram'}`
+      : 'nenhuma varredura marcada para hoje';
+
+    const leitor = el('p.ritmo-leitor', { texto: resumo });
+    /* Um só lugar de leitura em vez de balão flutuante: o balão tapa a régua
+       justamente onde o olho está. */
+    function leitura(i) {
+      leitor.textContent = i
+        ? `${i.hora}h · ${i.nome} · com ${i.agente} · ${ESTADO_TXT[i.estado] || i.estado}`
+        : resumo;
+      leitor.classList.toggle('vivo', !!i);
+    }
+
+    const pulso = pulsoVigilia(dados);
+    baterVigilia = pulso.bater;
+
+    limpar(caixa);
+    juntar(caixa, [
+      el('div.ritmo-cab', null, [
+        el('h3', { texto: 'Ritmo do dia' }),
+        el('p.ritmo-nota', {
+          texto: `${diaPorExtenso(dados.hoje)}${dados.dia_util === false ? ' · fora do dia útil' : ''} · agenda lida às ${horaSeg(dados.agora)}`,
+        }),
+      ]),
+      el('div.ritmo-corpo', null, [
+        el('div.ritmo-coluna', null, [
+          leitor,
+          linhaDoDia(dados, leitura),
+          el(`div.ritmo-frase.${frase.tom}`, null, [
+            el('b', { texto: frase.principal }),
+            el('span', { texto: frase.apoio }),
+          ]),
+          pulso.no,
+        ]),
+        el('div.ritmo-lado', null, [
+          el('h4', { texto: 'O que a NÓRIA acabou de dizer' }),
+          acabouDeDizer(dados, nomes),
+        ]),
+      ]),
+    ]);
+  }
+
+  function falhar(e) {
+    baterVigilia = null;
+    limpar(caixa);
+    juntar(caixa, [
+      el('div.ritmo-cab', null, [el('h3', { texto: 'Ritmo do dia' })]),
+      el('div.ritmo-falha', null, [
+        el('b', { texto: 'A agenda do dia não respondeu.' }),
+        el('span', {
+          texto: `${e && e.message ? e.message : 'erro inesperado'} — nada foi desenhado de memória: sem resposta, a faixa fica em branco em vez de fingir um dia que não foi lido.`,
+        }),
+      ]),
+    ]);
+  }
+
+  async function atualizar() {
+    try {
+      const d = await api.agenda();
+      if (!vivo) return;
+      ultimos = d;
+      desenhar(d);
+    } catch (e) {
+      if (vivo) falhar(e);
+    }
+  }
+
+  atualizar();
+  const timer = setInterval(atualizar, RITMO_MS);
+  /* O arco da vigília anda a cada segundo; o dado só é relido a cada 20 s. */
+  const segundo = setInterval(() => {
+    if (typeof baterVigilia === 'function') baterVigilia();
+  }, 1000);
+
+  return {
+    no: caixa,
+    /* A agenda responde antes de /ceo e só traz o código do agente. Quando os
+       nomes chegam, a faixa se redesenha com o dado que já tinha — reler a API
+       só para trocar "fiscal.documento" por "Alan" seria desperdício. */
+    redesenhar: () => { if (vivo && ultimos) desenhar(ultimos); },
+    parar: () => { vivo = false; clearInterval(timer); clearInterval(segundo); },
+  };
+}
+
 /* ---------------------------------------------------------------- tela --- */
 
 export async function montar(raiz, _params, { pulso, ir }) {
   const caixa = el('div.ceo');
-  const painelDados = el('div');
+  const painelDados = el('div');   /* os grandes números */
+  const resto = el('div');         /* curva, concentração e equipe */
   const barra = el('div.ceo-topo');
   const fluxo = el('div');
-  juntar(caixa, [barra, painelDados, fluxo]);
+
+  /* Os nomes dos agentes vêm da equipe de /ceo; a agenda só devolve o código.
+     O objeto é o mesmo entre recargas, então a faixa lê sempre o mais recente
+     sem precisar ser remontada. */
+  const nomes = {};
+  const ritmo = faixaRitmo({ nomes });
+
+  /* A faixa entra entre os grandes números e o resto: o dono lê o dinheiro,
+     depois pergunta "e a NÓRIA, está fazendo alguma coisa?" — a resposta tem
+     que estar exatamente aí, antes de qualquer gráfico. */
+  juntar(caixa, [barra, painelDados, ritmo.no, resto, fluxo]);
   juntar(raiz, caixa);
 
   let timer = 0;
@@ -464,9 +875,18 @@ export async function montar(raiz, _params, { pulso, ir }) {
     try {
       const d = await api.ceo(forcar);
       if (!vivo) return;
+      let nomeNovo = false;
+      (Array.isArray(d.equipe) ? d.equipe : []).forEach((a) => {
+        if (a && a.codigo && nomes[a.codigo] !== (a.nome || a.codigo)) {
+          nomes[a.codigo] = a.nome || a.codigo;
+          nomeNovo = true;
+        }
+      });
+      if (nomeNovo) ritmo.redesenhar();
       limpar(painelDados);
-      juntar(painelDados, [
-        faixaNumeros(d),
+      juntar(painelDados, faixaNumeros(d));
+      limpar(resto);
+      juntar(resto, [
         el('div.grade.g2.ceo-meio', null, [grafico(d), concentracao(d)]),
         equipe(d),
       ]);
@@ -496,6 +916,7 @@ export async function montar(raiz, _params, { pulso, ir }) {
     } catch (e) {
       if (!vivo) return;
       limpar(painelDados);
+      limpar(resto);
       juntar(painelDados, el('div.aviso-erro', {
         texto: `Não deu para ler os números: ${e && e.message ? e.message : 'erro inesperado'}. Nenhum valor antigo foi reaproveitado como se fosse de agora.`,
       }));
@@ -512,6 +933,7 @@ export async function montar(raiz, _params, { pulso, ir }) {
   return () => {
     vivo = false;
     clearInterval(timer);
+    ritmo.parar();
     if (typeof desassinar === 'function') desassinar();
   };
 }

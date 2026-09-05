@@ -91,6 +91,10 @@ export const artefatos = () => pedir('/artefatos');
 export const aprovacoes = () => pedir('/aprovacoes');
 export const integracoes = () => pedir('/integracoes');
 export const ceo = (forcar) => pedir('/ceo' + (forcar ? '?forcar=true' : ''));
+/* A agenda é lida à parte dos grandes números porque tem outro ritmo: os
+   números do ERP mudam de minuto a minuto, o dia da NÓRIA muda de hora em hora
+   — e a faixa do ritmo se recarrega sozinha sem redesenhar a tela inteira. */
+export const agenda = () => pedir('/agenda');
 export const evidencia = (id) => pedir(`/evidencias/${id}`);
 
 /* ------------------------------------------------------------- comandos --- */
