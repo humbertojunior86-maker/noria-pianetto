@@ -451,6 +451,177 @@ SELECT f.cd_veiculo, f.ds_placa, f.nr_frota, f.ds_modelo, f.nm_tipo_veiculo, f.i
         ["dias", "cd_pessoa_filial", "limite"], False,
         "receita e custo identificavel por placa da frota propria no periodo"),
 
+    "lucratividade.por_setor": (
+        """\
+-- lucratividade.por_setor
+-- Resultado por setor economico, na chave que decide o custo:
+-- ctrc.id_proprietario_veiculo (1 = frota propria, 2 = agregado, 3 = terceiro).
+-- Agenciamento (2 e 3): o custo e a carta frete paga ao transportador.
+-- Frota propria (1): a carta frete e paga a PROPRIA Pianetto (transferencia
+-- interna) e por isso NAO entra como custo; entra o caixa amarrado ao veiculo.
+-- CT-e sem carta frete fica fora do custo e e contado a parte: tratar como
+-- custo zero inventaria margem.
+WITH ct AS (
+  SELECT c.cd_ctrc, c.vl_total,
+         CASE c.id_proprietario_veiculo WHEN 1 THEN 'frota_propria' WHEN 2 THEN 'agregado'
+              WHEN 3 THEN 'terceiro' ELSE 'sem_classificacao' END AS setor,
+         (SELECT sum(f.vl_frete) FROM carta_frete f WHERE f.cd_ctrc = c.cd_ctrc) AS vl_carta
+    FROM ctrc c
+   WHERE c.dt_cancelamento IS NULL
+     AND c.dt_emissao >= CURRENT_DATE - %(dias)s
+     AND (%(cd_pessoa_filial)s IS NULL OR c.cd_pessoa_filial = %(cd_pessoa_filial)s)
+), rec AS (
+  SELECT setor,
+         count(*) AS qt_ctes,
+         sum(vl_total) AS vl_receita,
+         sum(vl_carta) FILTER (WHERE setor <> 'frota_propria') AS vl_frete_terceiro,
+         sum(vl_carta) FILTER (WHERE setor =  'frota_propria') AS vl_carta_interna,
+         count(*)      FILTER (WHERE vl_carta IS NULL) AS qt_sem_custo,
+         sum(vl_total) FILTER (WHERE vl_carta IS NULL) AS vl_sem_custo
+    FROM ct GROUP BY 1
+), frota AS (
+  SELECT sum(k.vl_lancamento) AS vl_caixa, count(*) AS qt_lanc
+    FROM caixa_veiculo cv
+    JOIN caixa k ON k.cd_caixa = cv.cd_caixa
+    JOIN veiculo_proprio vp ON vp.cd_veiculo = cv.cd_veiculo AND vp.dt_baixa IS NULL
+   WHERE k.dt_documento BETWEEN CURRENT_DATE - %(dias)s AND CURRENT_DATE
+)
+SELECT r.setor,
+       r.qt_ctes,
+       round(COALESCE(r.vl_receita, 0)::numeric, 2)        AS vl_receita,
+       round(COALESCE(r.vl_frete_terceiro, 0)::numeric, 2) AS vl_frete_terceiro,
+       round((CASE WHEN r.setor = 'frota_propria'
+                   THEN COALESCE((SELECT vl_caixa FROM frota), 0) ELSE 0 END)::numeric, 2) AS vl_custo_frota,
+       round((COALESCE(r.vl_receita, 0) - COALESCE(r.vl_frete_terceiro, 0)
+              - CASE WHEN r.setor = 'frota_propria'
+                     THEN COALESCE((SELECT vl_caixa FROM frota), 0) ELSE 0 END)::numeric, 2) AS vl_margem,
+       round((100.0 * (COALESCE(r.vl_receita, 0) - COALESCE(r.vl_frete_terceiro, 0)
+              - CASE WHEN r.setor = 'frota_propria'
+                     THEN COALESCE((SELECT vl_caixa FROM frota), 0) ELSE 0 END)
+              / NULLIF(r.vl_receita, 0))::numeric, 2) AS pr_margem,
+       round(COALESCE(r.vl_carta_interna, 0)::numeric, 2) AS vl_carta_interna,
+       r.qt_sem_custo,
+       round(COALESCE(r.vl_sem_custo, 0)::numeric, 2) AS vl_sem_custo,
+       COALESCE((SELECT qt_lanc FROM frota), 0) AS qt_lancamentos_frota
+  FROM rec r
+ ORDER BY 3 DESC""",
+        ["dias", "cd_pessoa_filial"], False,
+        "receita e custo por setor economico: frota propria, agregado e terceiro"),
+
+    "lucratividade.por_agencia": (
+        """\
+-- lucratividade.por_agencia
+-- Cada CT-e nasce numa agencia (ctrc.cd_agencia). Receita e custo direto de
+-- frete por unidade, mais a despesa lancada no centro de custo ligado a
+-- agencia (agencia_centro_custo -> caixa_participacao).
+-- Ressalva de leitura: o centro de custo da matriz recebe despesa geral da
+-- empresa, entao o resultado dela nao e comparavel com o de uma agencia.
+-- O custo do veiculo proprio NAO esta aqui: ele nao e rateado por agencia.
+WITH ct AS (
+  SELECT c.cd_agencia, c.vl_total, c.id_proprietario_veiculo AS tipo,
+         (SELECT sum(f.vl_frete) FROM carta_frete f WHERE f.cd_ctrc = c.cd_ctrc) AS vl_carta
+    FROM ctrc c
+   WHERE c.dt_cancelamento IS NULL
+     AND c.dt_emissao >= CURRENT_DATE - %(dias)s
+     AND (%(cd_pessoa_filial)s IS NULL OR c.cd_pessoa_filial = %(cd_pessoa_filial)s)
+), rec AS (
+  SELECT cd_agencia,
+         count(*) AS qt_ctes,
+         sum(vl_total) AS vl_receita,
+         sum(vl_total) FILTER (WHERE tipo = 1)  AS vl_receita_frota,
+         sum(vl_carta) FILTER (WHERE tipo <> 1) AS vl_frete_terceiro,
+         count(*)      FILTER (WHERE tipo <> 1 AND vl_carta IS NULL) AS qt_sem_custo,
+         sum(vl_total) FILTER (WHERE tipo <> 1 AND vl_carta IS NULL) AS vl_sem_custo
+    FROM ct GROUP BY 1
+), desp AS (
+  SELECT ac.cd_agencia, sum(cp.vl_participacao) AS vl_despesa, count(*) AS qt_lanc
+    FROM agencia_centro_custo ac
+    JOIN caixa_participacao cp ON cp.cd_centro_custo = ac.cd_centro_custo
+    JOIN caixa k ON k.cd_caixa = cp.cd_caixa
+   WHERE k.dt_documento BETWEEN CURRENT_DATE - %(dias)s AND CURRENT_DATE
+   GROUP BY 1
+)
+SELECT a.cd_agencia, btrim(a.nm_agencia) AS nm_agencia, r.qt_ctes,
+       round(COALESCE(r.vl_receita, 0)::numeric, 2)        AS vl_receita,
+       round(COALESCE(r.vl_receita_frota, 0)::numeric, 2)  AS vl_receita_frota,
+       round(COALESCE(r.vl_frete_terceiro, 0)::numeric, 2) AS vl_frete_terceiro,
+       round((COALESCE(r.vl_receita, 0) - COALESCE(r.vl_frete_terceiro, 0))::numeric, 2) AS vl_margem_bruta,
+       round(COALESCE(d.vl_despesa, 0)::numeric, 2)        AS vl_despesa_agencia,
+       round((COALESCE(r.vl_receita, 0) - COALESCE(r.vl_frete_terceiro, 0)
+              - COALESCE(d.vl_despesa, 0))::numeric, 2)    AS vl_resultado,
+       round((100.0 * (COALESCE(r.vl_receita, 0) - COALESCE(r.vl_frete_terceiro, 0)
+              - COALESCE(d.vl_despesa, 0)) / NULLIF(r.vl_receita, 0))::numeric, 2) AS pr_resultado,
+       COALESCE(r.qt_sem_custo, 0) AS qt_sem_custo,
+       round(COALESCE(r.vl_sem_custo, 0)::numeric, 2) AS vl_sem_custo,
+       (d.cd_agencia IS NOT NULL) AS id_centro_custo_ligado,
+       COALESCE(d.qt_lanc, 0) AS qt_lancamentos_despesa
+  FROM rec r
+  JOIN agencia a ON a.cd_agencia = r.cd_agencia
+  LEFT JOIN desp d ON d.cd_agencia = r.cd_agencia
+ ORDER BY 4 DESC
+ LIMIT %(limite)s""",
+        ["dias", "cd_pessoa_filial", "limite"], False,
+        "receita, custo de frete e despesa de centro de custo por agencia"),
+
+    "contraprova.lucratividade_custo_frota": (
+        """\
+-- contraprova.lucratividade_custo_frota
+-- O custo da frota por OUTRA porta do banco. O apurador soma o caixa amarrado
+-- ao veiculo (caixa_veiculo). Aqui o caminho e o centro de custo: placa,
+-- FROTA e OFICINA em caixa_participacao. Se os dois caminhos divergirem muito,
+-- o custo declarado nao esta fechado.
+-- A carta frete da frota propria vem junto, com o nome de quem recebeu: e o
+-- teste de que ela e transferencia interna, e nao custo.
+WITH placas AS (
+  SELECT DISTINCT btrim(v.ds_placa) AS ds_placa
+    FROM veiculo_proprio vp JOIN veiculo v ON v.cd_veiculo = vp.cd_veiculo
+   WHERE vp.dt_baixa IS NULL
+), cc_frota AS (
+  SELECT cc.cd_centro_custo
+    FROM centro_custo cc
+   WHERE btrim(cc.nm_centro_custo) IN (SELECT ds_placa FROM placas)
+      OR upper(btrim(cc.nm_centro_custo)) LIKE '%%FROTA%%'
+      OR upper(btrim(cc.nm_centro_custo)) LIKE 'OFICINA%%'
+), por_cc AS (
+  SELECT sum(cp.vl_participacao) AS vl, count(*) AS qt
+    FROM cc_frota f
+    JOIN caixa_participacao cp ON cp.cd_centro_custo = f.cd_centro_custo
+    JOIN caixa k ON k.cd_caixa = cp.cd_caixa
+   WHERE k.dt_documento BETWEEN CURRENT_DATE - %(dias)s AND CURRENT_DATE
+), por_veiculo AS (
+  SELECT sum(k.vl_lancamento) AS vl, count(*) AS qt
+    FROM caixa_veiculo cv
+    JOIN caixa k ON k.cd_caixa = cv.cd_caixa
+    JOIN veiculo_proprio vp ON vp.cd_veiculo = cv.cd_veiculo AND vp.dt_baixa IS NULL
+   WHERE k.dt_documento BETWEEN CURRENT_DATE - %(dias)s AND CURRENT_DATE
+), carta AS (
+  SELECT coalesce(nullif(p.nm_fantasia, ''), p.nm_pessoa) AS nm_recebedor,
+         count(*) AS qt, sum(f.vl_frete) AS vl
+    FROM ctrc c
+    JOIN carta_frete f ON f.cd_ctrc = c.cd_ctrc
+    LEFT JOIN pessoa p ON p.cd_pessoa = c.cd_pessoa_transportadora
+   WHERE c.dt_cancelamento IS NULL
+     AND c.dt_emissao >= CURRENT_DATE - %(dias)s
+     AND c.id_proprietario_veiculo = 1
+   GROUP BY 1
+)
+SELECT 'custo' AS linha, 'centro_custo' AS caminho, NULL::text AS nm_recebedor,
+       round(COALESCE((SELECT vl FROM por_cc), 0)::numeric, 2) AS vl,
+       COALESCE((SELECT qt FROM por_cc), 0) AS qt,
+       (SELECT count(*) FROM cc_frota) AS qt_chaves
+UNION ALL
+SELECT 'custo', 'caixa_veiculo', NULL,
+       round(COALESCE((SELECT vl FROM por_veiculo), 0)::numeric, 2),
+       COALESCE((SELECT qt FROM por_veiculo), 0),
+       (SELECT count(*) FROM placas)
+UNION ALL
+SELECT 'carta_frete_propria', 'ctrc', c.nm_recebedor,
+       round(c.vl::numeric, 2), c.qt, NULL
+  FROM carta c
+ ORDER BY 1, 4 DESC""",
+        ["dias"], False,
+        "custo da frota por centro de custo contra caixa do veiculo, e quem recebe a carta frete propria"),
+
     "fiscal.cte_pendente": (
         """\
 -- fiscal.cte_pendente
@@ -873,6 +1044,10 @@ PADROES: dict[str, dict] = {
     "frota.resultado_veiculo": {"dias": 90, "cd_pessoa_filial": None,
                                 "limite": 100},
     "fiscal.cte_pendente": {"dias": 90, "cd_pessoa_filial": None, "limite": 200},
+    "lucratividade.por_setor": {"dias": 90, "cd_pessoa_filial": None},
+    "lucratividade.por_agencia": {"dias": 90, "cd_pessoa_filial": None,
+                                  "limite": 60},
+    "contraprova.lucratividade_custo_frota": {"dias": 90},
     # contraprovas: mesmos padroes das consultas que elas contestam, para que a
     # comparacao seja de fato sobre o mesmo universo.
     "contraprova.cte_sem_titulo_situacao": {"dias": 30, "carencia_dias": 0,

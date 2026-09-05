@@ -121,6 +121,10 @@ VIGILANCIA = {
         "frota.resultado",
         "Apurar receita e custo por veículo da frota própria",
         {"dias": 90}),
+    "setor_lucratividade": (
+        "controladoria.lucratividade",
+        "Apurar o resultado por setor: frota própria contra agenciamento e por agência",
+        {"dias": 90, "limite": 60}),
     "cte_pendente": (
         "fiscal.documento",
         "Levantar CT-es sem autorização da SEFAZ",
@@ -158,6 +162,8 @@ ROTINAS = [
     ("pagar15", "contas a pagar: vencidos +15 dias", 16, {1, 3}, None),
     ("frota_veiculo", "frota: resultado por veículo", 17, {0}, None),
     ("margem_cte", "controladoria: margem por CT-e", 17, {4}, None),
+    ("setor_lucratividade", "controladoria: resultado por setor", 17, {1, 4},
+     None),
     ("receber_fim_de_dia", "cobrança: fechamento do dia", 18, {0, 1, 2, 3, 4},
      None),
 ]

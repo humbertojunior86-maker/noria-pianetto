@@ -328,6 +328,195 @@ function concentracao(d) {
   });
 }
 
+/* -------------------------------------------- resultado por setor da empresa */
+
+/* A Pianetto tem dois negócios dentro do mesmo CNPJ, e o custo de cada um mora
+   em lugar diferente do ERP. No agenciamento o custo é a carta frete paga ao
+   transportador. Na frota própria a carta frete é paga à própria Pianetto — é
+   transferência interna, e somá-la como custo inventaria prejuízo; o custo de
+   verdade é o caixa amarrado à placa.
+
+   Nada aqui é lucro. É margem de contribuição: não desconta imposto sobre
+   receita, comissão, folha da administração nem depreciação. A tela diz isso
+   por escrito, porque um número grande sem essa frase vira decisão errada. */
+
+const N = (v) => (v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v));
+
+function cartaoSetor({ titulo, apoio, receita, custoRotulo, custo, margem, pct, rodape, tom }) {
+  const p = N(pct);
+  return el(`div.ceo-setor${tom ? `.${tom}` : ''}`, null, [
+    el('header', null, [
+      el('h4', { texto: titulo }),
+      el('span.ceo-setor-apoio', { texto: apoio }),
+    ]),
+    el('div.ceo-setor-margem', null, [
+      el('b', { texto: p === null ? f.NADA : `${f.numero(p, 1)}%` }),
+      el('span', { texto: 'de margem de contribuição' }),
+    ]),
+    el('dl.ceo-setor-linhas', null, [
+      el('div', null, [el('dt', { texto: 'Receita' }), el('dd', { texto: f.dinheiro(receita) })]),
+      el('div', null, [el('dt', { texto: custoRotulo }), el('dd', { texto: f.dinheiro(custo) })]),
+      el('div.forte', null, [el('dt', { texto: 'Sobra' }), el('dd', { texto: f.dinheiro(margem) })]),
+    ]),
+    rodape ? el('p.ceo-setor-rodape', { texto: rodape }) : null,
+  ]);
+}
+
+function setores(d) {
+  const s = bloco(d.erp, 'setor');
+  const a = bloco(d.erp, 'agencia');
+  const dias = (d.erp && d.erp.setor && d.erp.setor.janela_dias) || 90;
+
+  if (!s.linhas.length) {
+    return painel({
+      titulo: 'Resultado por setor',
+      corpo: el('div.aviso-erro', {
+        texto: `Sem apuração por setor: ${s.erro || 'o ERP não devolveu linha de setor'}. Nenhum valor foi estimado no lugar.`,
+      }),
+    });
+  }
+
+  const por = {};
+  s.linhas.forEach((l) => { por[l.setor] = l; });
+  const frota = por.frota_propria || {};
+  const terc = por.terceiro || {};
+  const agreg = por.agregado || {};
+  const semClasse = por.sem_classificacao || null;
+
+  /* Agregado é veículo de terceiro com vínculo fixo: o custo continua sendo
+     carta frete que sai da empresa. Soma com terceiro para formar o setor de
+     agenciamento, e fica escrito embaixo que ele está dentro. */
+  const agRec = (N(terc.vl_receita) || 0) + (N(agreg.vl_receita) || 0);
+  const agCusto = (N(terc.vl_frete_terceiro) || 0) + (N(agreg.vl_frete_terceiro) || 0);
+  const agMargem = agRec - agCusto;
+  const agPct = agRec ? (agMargem / agRec) * 100 : null;
+  const agCtes = (N(terc.qt_ctes) || 0) + (N(agreg.qt_ctes) || 0);
+  const semCusto = (N(terc.qt_sem_custo) || 0) + (N(agreg.qt_sem_custo) || 0);
+  const semCustoVl = (N(terc.vl_sem_custo) || 0) + (N(agreg.vl_sem_custo) || 0);
+
+  const frRec = N(frota.vl_receita) || 0;
+  const frCusto = N(frota.vl_custo_frota) || 0;
+  const frMargem = N(frota.vl_margem);
+  const frPct = N(frota.pr_margem);
+
+  const cartoes = el('div.ceo-setores', null, [
+    cartaoSetor({
+      titulo: 'Agenciamento',
+      apoio: `${f.numero(agCtes)} CT-e(s) em ${dias} dias · veículo de terceiro e agregado`,
+      receita: agRec,
+      custoRotulo: 'Carta frete paga a terceiro',
+      custo: agCusto,
+      margem: agMargem,
+      pct: agPct,
+      tom: 'agencia',
+      rodape: `Inclui ${f.numero(N(agreg.qt_ctes) || 0)} CT-e(s) de agregado, ${f.dinheiro(N(agreg.vl_receita) || 0)} de receita.`,
+    }),
+    cartaoSetor({
+      titulo: 'Frota própria',
+      apoio: `${f.numero(N(frota.qt_ctes) || 0)} CT-e(s) em ${dias} dias · ${f.numero(N(frota.lancamentos_de_caixa) || N(frota.qt_lancamentos_frota) || 0)} lançamentos de caixa nos veículos`,
+      receita: frRec,
+      custoRotulo: 'Caixa lançado nos veículos',
+      custo: frCusto,
+      margem: frMargem,
+      pct: frPct,
+      tom: 'frota',
+      rodape: `A carta frete destes CT-es, ${f.dinheiro(N(frota.vl_carta_interna) || 0)}, é paga à própria Pianetto: é transferência interna e ficou fora do custo.`,
+    }),
+  ]);
+
+  const ressalvas = [
+    'Isto é margem de contribuição, não lucro: não desconta ICMS, PIS/COFINS, comissão, folha da administração nem depreciação.',
+  ];
+  if (semCusto) {
+    ressalvas.push(`${f.numero(semCusto)} CT-e(s) de terceiro, ${f.dinheiro(semCustoVl)} de receita, ainda não têm carta frete lançada: entraram na receita e não no custo, então a margem do agenciamento está por cima.`);
+  }
+  ressalvas.push('O que não foi apontado a uma placa — pneu em estoque, oficina, administração da frota — não está no custo da frota.');
+  if (semClasse && N(semClasse.qt_ctes)) {
+    ressalvas.push(`${f.numero(N(semClasse.qt_ctes))} CT-e(s), ${f.dinheiro(N(semClasse.vl_receita) || 0)}, estão sem o tipo de proprietário do veículo preenchido e não couberam em setor nenhum.`);
+  }
+
+  /* ---------------------------------------------------------- as agências */
+  let tabela;
+  if (!a.linhas.length) {
+    tabela = el('div.aviso-erro', {
+      texto: `Sem quebra por agência: ${a.erro || 'o ERP não devolveu agências'}.`,
+    });
+  } else {
+    const linhas = a.linhas.map((l) => {
+      const rec = N(l.vl_receita) || 0;
+      const desp = N(l.vl_despesa_agencia) || 0;
+      const recFrota = N(l.vl_receita_frota) || 0;
+      const engole = rec > 0 && desp / rec > 0.40;
+      const soFrota = rec > 0 && recFrota / rec > 0.20;
+      return {
+        ...l,
+        comparavel: !(engole || soFrota),
+        motivo: engole
+          ? 'o centro de custo ligado a esta unidade recebe despesa que não é dela — matriz e administração caem aqui'
+          : soFrota
+            ? 'a receita é de frota própria, e o custo do veículo não é rateado por agência: o resultado sobe sozinho'
+            : null,
+      };
+    });
+    const comp = linhas.filter((l) => l.comparavel).sort((x, y) => (N(y.vl_resultado) || 0) - (N(x.vl_resultado) || 0));
+    const fora = linhas.filter((l) => !l.comparavel).sort((x, y) => (N(y.vl_receita) || 0) - (N(x.vl_receita) || 0));
+    const negativas = comp.filter((l) => (N(l.vl_resultado) || 0) < 0);
+
+    const corpo = (arr, dentro) => arr.map((l) => {
+      const res = N(l.vl_resultado);
+      const pr = N(l.pr_resultado);
+      const tom = !dentro ? 'fora' : res < 0 ? 'erro' : pr !== null && pr < 5 ? 'atencao' : '';
+      return el(`tr${tom ? `.${tom}` : ''}`, null, [
+        el('td.nome', null, [
+          el('span', { texto: (l.nm_agencia || '').replace(/^PIANETTO\s*-*\s*/i, '') || l.nm_agencia || f.NADA }),
+          l.motivo ? el('span.selo-fora', { texto: 'fora da comparação', title: l.motivo }) : null,
+          !l.id_centro_custo_ligado ? el('span.selo-fora', { texto: 'sem centro de custo', title: 'nenhum centro de custo está ligado a esta agência, então a despesa dela não aparece' }) : null,
+        ]),
+        el('td.num', { texto: f.numero(N(l.qt_ctes) || 0) }),
+        el('td.num', { texto: abreviar(N(l.vl_receita)) , title: f.dinheiro(N(l.vl_receita)) }),
+        el('td.num', { texto: abreviar(N(l.vl_margem_bruta)), title: `receita menos carta frete: ${f.dinheiro(N(l.vl_margem_bruta))}` }),
+        el('td.num', { texto: abreviar(N(l.vl_despesa_agencia)), title: `despesa do centro de custo: ${f.dinheiro(N(l.vl_despesa_agencia))}` }),
+        el('td.num.res', { texto: dentro ? abreviar(res) : f.NADA, title: dentro ? f.dinheiro(res) : (l.motivo || '') }),
+        el('td.num.pct', { texto: dentro && pr !== null ? `${f.numero(pr, 1)}%` : f.NADA }),
+      ]);
+    });
+
+    tabela = el('div.ceo-agencias', null, [
+      el('table.tab', null, [
+        el('thead', null, [el('tr', null, [
+          el('th', { texto: 'Agência' }),
+          el('th.num', { texto: 'CT-e' }),
+          el('th.num', { texto: 'Receita' }),
+          el('th.num', { texto: 'Menos frete' }),
+          el('th.num', { texto: 'Despesa' }),
+          el('th.num', { texto: 'Resultado' }),
+          el('th.num', { texto: '%' }),
+        ])]),
+        el('tbody', null, corpo(comp, true)),
+        fora.length ? el('tbody.ceo-fora', null, [
+          el('tr.sep', null, [el('td', { colspan: '7', texto: `${f.numero(fora.length)} unidade(s) fora da comparação — o número delas não é comparável com o das outras, e por isso não é apresentado como resultado` })]),
+          ...corpo(fora, false),
+        ]) : null,
+      ]),
+      el('p.ceo-carimbo', {
+        texto: `${f.numero(comp.length)} agência(s) comparáveis, ${f.numero(negativas.length)} no vermelho · janela de ${dias} dias`,
+      }),
+    ]);
+  }
+
+  return painel({
+    titulo: 'Resultado por setor',
+    nota: `Últimos ${dias} dias · margem de contribuição, não lucro`,
+    corpo: [
+      cartoes,
+      el('ul.ceo-ressalvas', null, ressalvas.map((t) => el('li', { texto: t }))),
+      el('h4.ceo-sub', { texto: 'Por agência' }),
+      tabela,
+      carimbo(s, 'Setores'),
+    ],
+  });
+}
+
 /* --------------------------------------------------------------- equipe -- */
 
 function cartaoAgente(a) {
@@ -888,6 +1077,7 @@ export async function montar(raiz, _params, { pulso, ir }) {
       limpar(resto);
       juntar(resto, [
         el('div.grade.g2.ceo-meio', null, [grafico(d), concentracao(d)]),
+        setores(d),
         equipe(d),
       ]);
       /* O fluxo ao vivo é remontado junto porque o log fica dentro do painel;

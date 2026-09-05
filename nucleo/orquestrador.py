@@ -34,6 +34,8 @@ POR_AGENTE = {
         ("toda_afirmacao_tem_evidencia", {})],
     "controladoria.margem": [
         ("toda_afirmacao_tem_evidencia", {})],
+    "controladoria.lucratividade": [
+        ("toda_afirmacao_tem_evidencia", {})],
     "frota.resultado": [
         ("contagem_confere", {"chave": "tratores",
                               "onde": {"id_tracao": True}}),
@@ -51,6 +53,8 @@ POR_AGENTE = {
 # Fallback para objetivo digitado por gente. Vem ANTES dos padrões genéricos
 # porque "duplicidade de pagamento" contém "pagar".
 PADROES_NOVOS = [
+    (r"lucratividad|por setor|resultado do setor|setor da frota|"
+     r"ag[eê]ncia|agenciamento|frota contra terceiro", "controladoria.lucratividade"),
     (r"duplicidad|pago em dobro|pagamento duplicad", "contas.pagar"),
     (r"sem t[ií]tulo|n[aã]o faturad|frete n[aã]o cobrad|cte sem", "comercial.faturamento"),
     (r"cliente que sumiu|cliente parou|perda de cliente|queda de cliente", "comercial.inteligencia"),
@@ -80,6 +84,12 @@ CONTRAPROVA: dict[str, list[dict]] = {
         "pergunta": "os títulos de cada grupo vêm do mesmo documento fiscal ou "
                     "de compras diferentes? duas notas distintas de mesmo valor "
                     "são duas compras reais, não pagamento em dobro"}],
+    "controladoria.lucratividade": [{
+        "agente": "controladoria.margem",
+        "pergunta": "o custo da frota fecha por outro caminho do banco? se o "
+                    "centro de custo mostrar despesa que o caixa do veículo "
+                    "não mostra, a margem da frota está apoiada em custo "
+                    "incompleto e sai alta por construção"}],
     "controladoria.margem": [{
         "agente": "frota.resultado",
         "pergunta": "quantos CT-es de margem negativa são de frota própria? "

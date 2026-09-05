@@ -1889,3 +1889,97 @@ body.modo-saguao {
   .mural-areas { grid-template-columns: 1fr; }
   .mural-linha-selos { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------------------------ resultado por setor (CEO) */
+.ceo-setores {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--e-4);
+}
+.ceo-setor {
+  border: 1px solid var(--linha-2); border-radius: var(--raio-md);
+  padding: var(--e-4); background: var(--painel-fundo);
+  border-top: 2px solid var(--linha-3);
+}
+.ceo-setor.agencia { border-top-color: var(--acento); }
+.ceo-setor.frota { border-top-color: var(--cromo-2); }
+.ceo-setor header { margin-bottom: var(--e-3); }
+.ceo-setor h4 {
+  margin: 0; font-family: var(--display); font-size: var(--t-md);
+  font-weight: var(--peso-forte); color: var(--tinta);
+}
+.ceo-setor-apoio {
+  display: block; margin-top: 2px; font-size: var(--t-mini);
+  color: var(--tinta-3); line-height: 1.45;
+}
+.ceo-setor-margem { display: flex; align-items: baseline; gap: var(--e-2); }
+.ceo-setor-margem b {
+  font-family: var(--display); font-size: var(--t-2xl);
+  font-weight: var(--peso-display); color: var(--tinta);
+  font-variant-numeric: tabular-nums; line-height: 1;
+}
+.ceo-setor.agencia .ceo-setor-margem b { color: var(--acento); }
+.ceo-setor-margem span { font-size: var(--t-mini); color: var(--tinta-3); }
+.ceo-setor-linhas { margin: var(--e-3) 0 0; }
+.ceo-setor-linhas div {
+  display: flex; justify-content: space-between; gap: var(--e-3);
+  padding: 5px 0; border-top: 1px solid var(--linha);
+}
+.ceo-setor-linhas div:first-child { border-top: 0; }
+.ceo-setor-linhas dt { margin: 0; font-size: var(--t-peq); color: var(--tinta-2); }
+.ceo-setor-linhas dd {
+  margin: 0; font-size: var(--t-peq); color: var(--tinta);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.ceo-setor-linhas .forte dt, .ceo-setor-linhas .forte dd {
+  font-weight: var(--peso-forte); color: var(--tinta);
+}
+.ceo-setor-rodape {
+  margin: var(--e-3) 0 0; font-size: var(--t-mini); color: var(--tinta-3);
+  line-height: 1.5;
+}
+.ceo-ressalvas {
+  margin: var(--e-4) 0 0; padding: var(--e-3) var(--e-3) var(--e-3) var(--e-5);
+  list-style: disc; background: var(--atencao-fundo);
+  border-left: 2px solid var(--atencao); border-radius: var(--raio-min);
+}
+.ceo-ressalvas li {
+  font-size: var(--t-mini); color: var(--tinta-2); line-height: 1.55;
+  margin-bottom: 4px;
+}
+.ceo-ressalvas li:last-child { margin-bottom: 0; }
+.ceo-sub {
+  margin: var(--e-5) 0 var(--e-2); font-family: var(--display);
+  font-size: var(--t-mini); letter-spacing: .1em; text-transform: uppercase;
+  color: var(--tinta-3); font-weight: var(--peso-forte);
+}
+.ceo-agencias { overflow-x: auto; }
+.ceo-agencias table { width: 100%; border-collapse: collapse; }
+.ceo-agencias th, .ceo-agencias td {
+  padding: 6px var(--e-2); text-align: left; font-size: var(--t-peq);
+  border-top: 1px solid var(--linha); white-space: nowrap;
+}
+.ceo-agencias th {
+  font-size: var(--t-micro); text-transform: uppercase; letter-spacing: .08em;
+  color: var(--tinta-3); font-weight: var(--peso-medio); border-top: 0;
+}
+.ceo-agencias td.num, .ceo-agencias th.num {
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.ceo-agencias td.res { font-weight: var(--peso-medio); color: var(--tinta); }
+.ceo-agencias tr.erro td.res, .ceo-agencias tr.erro td.pct { color: var(--erro); }
+.ceo-agencias tr.atencao td.pct { color: var(--atencao); }
+.ceo-agencias td.nome {
+  white-space: normal; color: var(--tinta); max-width: 22rem;
+}
+.ceo-agencias .selo-fora {
+  display: inline-block; margin-left: 6px; padding: 1px 6px;
+  font-family: var(--mono); font-size: var(--t-micro); border-radius: 999px;
+  color: var(--tinta-3); border: 1px solid var(--linha-2); cursor: help;
+}
+.ceo-agencias tbody.ceo-fora td { color: var(--tinta-3); }
+.ceo-agencias tr.sep td {
+  padding-top: var(--e-3); font-size: var(--t-mini); color: var(--tinta-3);
+  border-top: 1px solid var(--linha-2); white-space: normal;
+}
+@media (max-width: 900px) {
+  .ceo-setores { grid-template-columns: 1fr; }
+}

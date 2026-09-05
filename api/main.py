@@ -154,6 +154,24 @@ def _ceo_erp(emp: int) -> dict:
         else:
             saida[chave] = {"erro": r.erro or "consulta não respondeu",
                             "linhas": []}
+
+    # Resultado por setor. Estas consultas pedem janela e recorte explícitos:
+    # deixar o padrão implícito faria a tela dizer "90 dias" sem que ninguém
+    # tivesse escrito 90 em lugar nenhum.
+    for op, chave, par in (
+            ("lucratividade.por_setor", "setor",
+             {"dias": 90, "cd_pessoa_filial": None}),
+            ("lucratividade.por_agencia", "agencia",
+             {"dias": 90, "cd_pessoa_filial": None, "limite": 60})):
+        r = fb.rodar("atua", op, par, empresa_id=emp,
+                     acoes_permitidas=[f"atua.{op}"])
+        if r.ok:
+            saida[chave] = {"linhas": r.dados.get("linhas", []),
+                            "consultada_em": r.dados.get("consultada_em"),
+                            "janela_dias": par["dias"]}
+        else:
+            saida[chave] = {"erro": r.erro or "consulta não respondeu",
+                            "linhas": [], "janela_dias": par["dias"]}
     return saida
 
 

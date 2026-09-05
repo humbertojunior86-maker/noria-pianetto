@@ -734,6 +734,218 @@ def exec_controladoria_margem(*, empresa_id, missao_id, tarefa_id, entradas,
     )
 
 
+
+def exec_lucratividade_setor(*, empresa_id, missao_id, tarefa_id, entradas,
+                             acoes) -> Entrega:
+    """Resultado por setor: frota própria contra agenciamento, e por agência.
+
+    A empresa tem dois negócios dentro do mesmo CNPJ, e eles não têm o mesmo
+    custo. No agenciamento o custo é a carta frete paga ao transportador. Na
+    frota própria a carta frete é paga à própria Pianetto — é transferência
+    interna, e somá-la como custo inventaria prejuízo; o custo de verdade é o
+    caixa amarrado ao veículo.
+
+    O que sai daqui é margem de contribuição por setor, não lucro: nada aqui
+    desconta ICMS, PIS/COFINS, folha da administração nem depreciação.
+    """
+    dias = int(entradas.get("dias", 90))
+    limite = int(entradas.get("limite", 60))
+    filial = entradas.get("cd_pessoa_filial")
+
+    rs = _rodar("lucratividade.por_setor",
+                {"dias": dias, "cd_pessoa_filial": filial},
+                empresa_id=empresa_id, missao_id=missao_id,
+                tarefa_id=tarefa_id, acoes=acoes)
+    if not rs.ok:
+        return Entrega("bloqueada", f"consulta indisponível: {rs.erro}", {},
+                       pendencias=[rs.erro or "falha na consulta por setor"])
+    ra = _rodar("lucratividade.por_agencia",
+                {"dias": dias, "cd_pessoa_filial": filial, "limite": limite},
+                empresa_id=empresa_id, missao_id=missao_id,
+                tarefa_id=tarefa_id, acoes=acoes)
+
+    setores = {l["setor"]: l for l in rs.dados["linhas"]}
+    if not setores:
+        return Entrega("parcial", "a consulta não devolveu setor algum", {},
+                       pendencias=["sem linha de setor para declarar"])
+
+    def bloco(chave):
+        l = setores.get(chave) or {}
+        return {
+            "ctes": int(l.get("qt_ctes") or 0),
+            "receita": round(_f(l.get("vl_receita")), 2),
+            "custo_frete_terceiro": round(_f(l.get("vl_frete_terceiro")), 2),
+            "custo_frota_caixa": round(_f(l.get("vl_custo_frota")), 2),
+            "margem": round(_f(l.get("vl_margem")), 2),
+            "margem_pct": round(_f(l.get("pr_margem")) / 100.0, 4),
+            "ctes_sem_custo": int(l.get("qt_sem_custo") or 0),
+            "receita_sem_custo": round(_f(l.get("vl_sem_custo")), 2),
+        }
+
+    frota = bloco("frota_propria")
+    frota["carta_frete_interna"] = round(
+        _f((setores.get("frota_propria") or {}).get("vl_carta_interna")), 2)
+    frota["lancamentos_de_caixa"] = int(
+        (setores.get("frota_propria") or {}).get("qt_lancamentos_frota") or 0)
+
+    # Agregado é veículo de terceiro com vínculo fixo: o custo continua sendo
+    # carta frete que sai da empresa. Some com terceiro para formar o setor de
+    # agenciamento, mas fica destacado, porque a negociação é outra.
+    ag_partes = [bloco("terceiro"), bloco("agregado")]
+    agenciamento = {
+        "ctes": sum(b["ctes"] for b in ag_partes),
+        "receita": round(sum(b["receita"] for b in ag_partes), 2),
+        "custo_frete_terceiro": round(
+            sum(b["custo_frete_terceiro"] for b in ag_partes), 2),
+        "custo_frota_caixa": 0.0,
+        "ctes_sem_custo": sum(b["ctes_sem_custo"] for b in ag_partes),
+        "receita_sem_custo": round(sum(b["receita_sem_custo"] for b in ag_partes), 2),
+    }
+    agenciamento["margem"] = round(
+        agenciamento["receita"] - agenciamento["custo_frete_terceiro"], 2)
+    agenciamento["margem_pct"] = round(
+        agenciamento["margem"] / agenciamento["receita"], 4) \
+        if agenciamento["receita"] else 0.0
+    agenciamento["agregado"] = bloco("agregado")
+
+    sem_classe = bloco("sem_classificacao")
+    receita_total = round(frota["receita"] + agenciamento["receita"]
+                          + sem_classe["receita"], 2)
+
+    # ------------------------------------------------------------- agências
+    agencias, nao_comparaveis, negativas = [], [], []
+    campos = ("cd_agencia", "nm_agencia", "qt_ctes", "vl_receita",
+              "vl_receita_frota", "vl_frete_terceiro", "vl_margem_bruta",
+              "vl_despesa_agencia", "vl_resultado", "pr_resultado",
+              "qt_sem_custo", "vl_sem_custo", "id_centro_custo_ligado")
+    erro_agencia = None
+    if ra.ok:
+        for l in ra.dados["linhas"]:
+            d = _linha(l, campos)
+            rec = _f(l.get("vl_receita"))
+            desp = _f(l.get("vl_despesa_agencia"))
+            frota_rec = _f(l.get("vl_receita_frota"))
+            # Centro de custo que engole mais de 40% da receita da unidade não
+            # é despesa de agência: é rateio institucional caindo ali (matriz,
+            # administração, oficina). Marcar em vez de somar como prejuízo.
+            demais = rec > 0 and desp / rec > 0.40
+            # E agência que despacha frota própria aparece sem o custo do
+            # veículo, que não é rateado por unidade: o resultado dela sobe
+            # sozinho. Acima de 20% da receita em frota, sai da comparação.
+            so_frota = rec > 0 and frota_rec / rec > 0.20
+            d["comparavel"] = not (demais or so_frota)
+            d["motivo_nao_comparavel"] = (
+                "centro de custo recebe despesa que não é da unidade" if demais
+                else "receita de frota própria sem o custo do veículo"
+                if so_frota else None)
+            d["sem_centro_custo"] = not bool(l.get("id_centro_custo_ligado"))
+            agencias.append(d)
+            if not d["comparavel"]:
+                nao_comparaveis.append(d)
+            elif _f(l.get("vl_resultado")) < 0:
+                negativas.append(d)
+    else:
+        erro_agencia = ra.erro or "consulta por agência não respondeu"
+
+    comparaveis = [a for a in agencias if a["comparavel"]]
+    piores = sorted(comparaveis, key=lambda a: _f(a.get("vl_resultado")))[:8]
+    melhores = sorted(comparaveis, key=lambda a: -_f(a.get("vl_resultado")))[:8]
+
+    resultado = {
+        "janela_dias": dias,
+        "receita_total": receita_total,
+        "frota_propria": frota,
+        "agenciamento": agenciamento,
+        "sem_classificacao": sem_classe,
+        "agencias_apuradas": len(agencias),
+        "agencias_comparaveis": len(comparaveis),
+        "agencias_no_vermelho": len(negativas),
+        "agencias_nao_comparaveis": len(nao_comparaveis),
+        "melhores_agencias": melhores,
+        "piores_agencias": piores,
+        "agencias": agencias,
+        "erro_agencia": erro_agencia,
+    }
+
+    evid = [_ev("consulta", "atua", "lucratividade.por_setor", rs.referencia,
+                "atua:ctrc+carta_frete+caixa_veiculo",
+                rs.dados["consultada_em"])]
+    if ra.ok:
+        evid.append(_ev("consulta", "atua", "lucratividade.por_agencia",
+                        ra.referencia,
+                        "atua:ctrc+agencia_centro_custo+caixa_participacao",
+                        ra.dados["consultada_em"]))
+
+    afirm = [
+        {"texto": f"Em {dias} dias o agenciamento moveu {brl(agenciamento['receita'])} "
+                  f"de receita em {agenciamento['ctes']} CT-e(s) e pagou "
+                  f"{brl(agenciamento['custo_frete_terceiro'])} de carta frete, "
+                  f"deixando {brl(agenciamento['margem'])} — "
+                  f"{pct(agenciamento['margem_pct'], 2)} de margem de "
+                  f"contribuição.",
+         "natureza": "fato", "evidencia": 0},
+        {"texto": f"A frota própria fez {brl(frota['receita'])} em "
+                  f"{frota['ctes']} CT-e(s) contra {brl(frota['custo_frota_caixa'])} "
+                  f"de caixa lançado nos veículos, deixando "
+                  f"{brl(frota['margem'])} — {pct(frota['margem_pct'], 2)}. A "
+                  f"carta frete desses CT-es, {brl(frota['carta_frete_interna'])}, "
+                  f"é paga à própria Pianetto e por isso ficou fora do custo.",
+         "natureza": "fato", "evidencia": 0},
+        {"texto": f"Cada real de receita do agenciamento devolve "
+                  f"{pct(agenciamento['margem_pct'], 2)}; cada real da frota "
+                  f"devolve {pct(frota['margem_pct'], 2)}. A comparação é de "
+                  f"margem de contribuição, não de lucro: nenhum dos dois "
+                  f"desconta imposto, comissão nem estrutura administrativa.",
+         "natureza": "indicio", "evidencia": 0},
+    ]
+    if ra.ok:
+        afirm.append(
+            {"texto": f"Das {len(agencias)} agências com CT-e no período, "
+                      f"{len(comparaveis)} têm despesa de centro de custo "
+                      f"compatível com o próprio movimento e "
+                      f"{len(negativas)} delas fecharam no vermelho; "
+                      f"{len(nao_comparaveis)} ficaram de fora da comparação "
+                      f"porque o centro de custo ligado a elas recebe despesa "
+                      f"que não é da unidade.",
+             "natureza": "fato", "evidencia": 1})
+
+    incert = [
+        "isto é margem de contribuição por setor, não lucro: falta ICMS, "
+        "PIS/COFINS, comissão, folha da administração, depreciação e juros",
+        f"{agenciamento['ctes_sem_custo']} CT-e(s) de terceiro, "
+        f"{brl(agenciamento['receita_sem_custo'])} de receita, não têm carta "
+        f"frete lançada; entraram na receita e não no custo, então a margem do "
+        f"agenciamento está por cima até essas cartas serem lançadas",
+        "o custo da frota é o caixa amarrado ao veículo: o que não foi "
+        "apontado a uma placa (pneu comprado para estoque, oficina, "
+        "administração da frota) não está aqui",
+        "a despesa por agência vem do centro de custo ligado a ela; agência "
+        "sem centro de custo aparece só com margem de frete, e o centro de "
+        "custo da matriz carrega despesa da empresa inteira",
+        "o custo do veículo próprio não é rateado por agência: na tabela de "
+        "agências ele não aparece, e por isso a agência que despacha frota "
+        "própria parece melhor do que é",
+    ]
+    if erro_agencia:
+        incert.append(f"a quebra por agência não veio: {erro_agencia}")
+    if sem_classe["ctes"]:
+        incert.append(
+            f"{sem_classe['ctes']} CT-e(s), {brl(sem_classe['receita'])}, estão "
+            f"sem o tipo de proprietário do veículo preenchido e não puderam "
+            f"ser postos em setor nenhum")
+
+    return Entrega(
+        "concluida",
+        f"Em {dias} dias: agenciamento {pct(agenciamento['margem_pct'], 2)} "
+        f"({brl(agenciamento['margem'])}) e frota própria "
+        f"{pct(frota['margem_pct'], 2)} ({brl(frota['margem'])}) de margem de "
+        f"contribuição.",
+        resultado, afirm, evid, incert,
+        bruto={"setores": rs.dados["linhas"],
+               "agencias": ra.dados["linhas"] if ra.ok else []},
+    )
+
+
 def exec_frota_resultado(*, empresa_id, missao_id, tarefa_id, entradas,
                          acoes) -> Entrega:
     """Receita e custo identificável por placa da frota própria.
@@ -1213,6 +1425,95 @@ def aud_duplicidade_documento(*, empresa_id, missao_id, tarefa_id, entradas,
                      {**dados, "divergencia": distintos + parcelas}, evid)
 
 
+
+def aud_custo_da_frota(*, empresa_id, missao_id, tarefa_id, entradas, acoes,
+                       alvo) -> Entrega:
+    """Contesta Vera: o custo da frota fecha por outro caminho?
+
+    Vera soma o caixa amarrado à placa (`caixa_veiculo`). Aqui o caminho é o
+    centro de custo (`caixa_participacao`), que é como a contabilidade enxerga
+    a mesma despesa. Se os dois discordarem muito, a margem da frota está
+    apoiada em custo incompleto — e margem calculada sobre custo faltante sai
+    alta por construção, nunca baixa.
+    """
+    dias = int(entradas.get("dias") or 90)
+    r = _rodar("contraprova.lucratividade_custo_frota", {"dias": dias},
+               empresa_id=empresa_id, missao_id=missao_id,
+               tarefa_id=tarefa_id, acoes=acoes)
+    if not r.ok:
+        return _bloqueada(f"conferência por centro de custo indisponível: {r.erro}")
+
+    linhas = r.dados["linhas"]
+    por = {l["caminho"]: l for l in linhas if l["linha"] == "custo"}
+    cartas = [l for l in linhas if l["linha"] == "carta_frete_propria"]
+    if "centro_custo" not in por or "caixa_veiculo" not in por:
+        return _bloqueada("a contraprova não devolveu os dois caminhos de custo")
+
+    cc = _f(por["centro_custo"]["vl"])
+    cv = _f(por["caixa_veiculo"]["vl"])
+    declarado = _f(((alvo.get("resultado") or {}).get("frota_propria") or {})
+                   .get("custo_frota_caixa"))
+    receita = _f(((alvo.get("resultado") or {}).get("frota_propria") or {})
+                 .get("receita"))
+    base = declarado or cv
+    dif = base - cc
+    pr_dif = abs(dif) / base * 100.0 if base else 0.0
+
+    # Quem recebe a carta frete da frota própria decide se ela é custo.
+    externos = [l for l in cartas
+                if "PIANETTO" not in str(l.get("nm_recebedor") or "").upper()]
+    vl_externo = sum(_f(l.get("vl")) for l in externos)
+
+    evid = [_ev("consulta", "atua", "contraprova.lucratividade_custo_frota",
+                f"custo da frota em {dias} dias: {brl(cc)} pelo centro de "
+                f"custo contra {brl(cv)} pelo caixa do veículo; carta frete "
+                f"da frota própria: "
+                + "; ".join(f"{l.get('nm_recebedor')} {brl(_f(l.get('vl')))}"
+                            for l in cartas[:3]),
+                r.dados.get("raiz", "atua:caixa_participacao+caixa_veiculo"),
+                r.dados.get("consultada_em", ""))]
+    dados = {"custo_declarado": round(declarado, 2),
+             "custo_por_centro_de_custo": round(cc, 2),
+             "custo_por_caixa_do_veiculo": round(cv, 2),
+             "diferenca": round(dif, 2),
+             "diferenca_pct": round(pr_dif / 100.0, 4),
+             "centros_de_custo_de_frota": int(por["centro_custo"]["qt_chaves"] or 0),
+             "placas_ativas": int(por["caixa_veiculo"]["qt_chaves"] or 0),
+             "carta_frete_para_fora": round(vl_externo, 2)}
+
+    if vl_externo > 0:
+        return _veredito(
+            "auditoria", "contradiz",
+            f"A carta frete da frota própria não é toda interna: "
+            f"{brl(vl_externo)} foram para transportador de fora. Esse valor é "
+            f"custo de verdade e não está no cálculo da frota.",
+            {**dados, "divergencia": round(vl_externo, 2)}, evid)
+
+    if pr_dif <= 10.0:
+        return _veredito(
+            "auditoria", "confirma",
+            f"Confere: os dois caminhos chegam ao mesmo custo de frota — "
+            f"{brl(cv)} pelo caixa do veículo e {brl(cc)} pelo centro de "
+            f"custo, {_pr(pr_dif)}% de diferença. A margem da frota se "
+            f"sustenta.", dados, evid,
+            incert=[f"os dois caminhos leem a mesma tabela de caixa por chaves "
+                    f"diferentes: despesa que não foi apontada nem à placa nem "
+                    f"a centro de custo de frota escapa dos dois"])
+
+    falta = ("apenas {0} centros de custo de frota para {1} placas ativas"
+             .format(int(por["centro_custo"]["qt_chaves"] or 0),
+                     int(por["caixa_veiculo"]["qt_chaves"] or 0)))
+    return _veredito(
+        "auditoria", "contradiz",
+        f"Os dois caminhos não fecham: {brl(cv)} pelo caixa do veículo contra "
+        f"{brl(cc)} pelo centro de custo, {brl(abs(dif))} de diferença "
+        f"({_pr(pr_dif)}%). Há {falta}, então o custo por centro de custo é "
+        f"parcial — e enquanto a diferença não for explicada, a margem da "
+        f"frota, apurada sobre {brl(receita)} de receita, é um teto, não um "
+        f"número fechado.",
+        {**dados, "divergencia": round(abs(dif), 2)}, evid)
+
+
 def aud_margem_frota_propria(*, empresa_id, missao_id, tarefa_id, entradas,
                              acoes, alvo) -> Entrega:
     """Contesta Caio: quanto da margem negativa é transferência interna?
@@ -1379,7 +1680,9 @@ registrar(Definicao(
     promessa="A margem que existe atrás de cada conhecimento.", versao=1,
     competencias=["margem-por-cte", "custo-de-carta-frete",
                   "cte-com-margem-negativa"],
-    ferramentas=["atua"], acoes=["atua.controladoria.margem_por_cte"],
+    ferramentas=["atua"],
+    acoes=["atua.controladoria.margem_por_cte",
+           "atua.contraprova.lucratividade_custo_frota"],
     entradas={"dias": "int", "pr_margem_min": "num",
               "cd_pessoa_filial": "int", "limite": "int"},
     saidas={"receita": "num", "custo_carta_frete": "num",
@@ -1390,6 +1693,30 @@ registrar(Definicao(
                "CT-e sem carta frete fora do cálculo",
                "resultado tratado como contribuição, nunca como lucro"],
     executor=exec_controladoria_margem,
+    auditor=aud_custo_da_frota,
+))
+
+registrar(Definicao(
+    id="controladoria.lucratividade", nome="Vera",
+    papel="Analista de Lucratividade", area="Controladoria & Custos",
+    promessa="Saber qual setor sustenta a empresa e qual é sustentado por ela.",
+    versao=1,
+    competencias=["resultado-por-setor", "frota-contra-agenciamento",
+                  "resultado-por-agencia"],
+    ferramentas=["atua"],
+    acoes=["atua.lucratividade.por_setor", "atua.lucratividade.por_agencia"],
+    entradas={"dias": "int", "cd_pessoa_filial": "int", "limite": "int"},
+    saidas={"receita_total": "num", "frota_propria": "dict",
+            "agenciamento": "dict", "agencias_apuradas": "int",
+            "agencias_no_vermelho": "int",
+            "agencias_nao_comparaveis": "int"},
+    limites={"tempo_s": 120, "custo_centavos": 0},
+    criterios=["carta frete da frota própria fora do custo",
+               "CT-e sem carta frete fora do custo e contado à parte",
+               "centro de custo que engole a receita marcado como não "
+               "comparável, em vez de virar prejuízo de agência",
+               "resultado tratado como contribuição, nunca como lucro"],
+    executor=exec_lucratividade_setor,
 ))
 
 registrar(Definicao(
