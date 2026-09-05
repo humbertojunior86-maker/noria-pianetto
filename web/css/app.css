@@ -135,7 +135,7 @@
 .topo .vao { flex: 1 1 auto; }
 .topo-acoes { display: flex; align-items: center; gap: var(--e-2); }
 
-.botao-menu { display: none; }
+.topo .botao-menu { display: none; }
 
 /* ------------------------------------------------------------ botões ----- */
 .btn {
@@ -724,7 +724,7 @@ table.tabela td strong { color: var(--tinta); font-weight: var(--peso-medio); }
     box-shadow: var(--sombra-4);
   }
   .lateral.aberta { transform: none; }
-  .botao-menu { display: inline-flex; }
+  .topo .botao-menu { display: inline-flex; }
   .conteudo { padding: var(--e-5) var(--e-4) var(--e-16); }
   .topo { padding: 0 var(--e-4); gap: var(--e-3); }
   .topo .sub { display: none; }

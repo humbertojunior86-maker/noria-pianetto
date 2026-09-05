@@ -56,7 +56,7 @@ def conciliacao_diaria(dia: date | None = None) -> list[int]:
         cd = c["cd_conta"]
         banco = (c.get("nm_banco") or "").strip() or f"conta {cd}"
         mid = _abrir(
-            f"Conciliar o extrato da conta {cd} em {d.isoformat()} "
+            f"Conciliar o extrato da conta {cd} em {d.strftime('%d/%m/%Y')} "
             f"contra os lançamentos do ATUA",
             {"cd_conta": cd, "data": d.isoformat(), "banco": banco},
             f"conciliacao:{cd}:{d.isoformat()}")

@@ -1,7 +1,8 @@
-__pycache__/
 *.pyc
-dados/noria.db
-dados/noria.db-wal
-dados/noria.db-shm
-artefatos/
 .secrets/
+__pycache__/
+artefatos/
+dados/noria.db
+dados/noria.db-shm
+dados/noria.db-wal
+web/_qa/

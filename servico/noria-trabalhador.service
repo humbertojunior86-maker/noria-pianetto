@@ -1,0 +1,18 @@
+[Unit]
+Description=NÓRIA — trabalhador (executa as missões)
+After=noria-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/noria
+Environment="NORIA_DB=/opt/noria/dados/noria.db"
+Environment="NORIA_SEGREDOS=/opt/noria/.secrets"
+Environment="NORIA_INTERVALO=5"
+ExecStart=/opt/noria/venv/bin/python trabalhador.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

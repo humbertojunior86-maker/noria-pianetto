@@ -39,9 +39,15 @@ PADROES = [
 
 def _entradas_conciliacao(objetivo: str, contexto: dict) -> dict:
     e = {"cd_conta": contexto.get("cd_conta"), "data": contexto.get("data")}
-    m = re.search(r"(\d{4}-\d{2}-\d{2})", objetivo)
-    if m and not e["data"]:
-        e["data"] = m.group(1)
+    if not e["data"]:
+        m = re.search(r"(\d{4}-\d{2}-\d{2})", objetivo)
+        if m:
+            e["data"] = m.group(1)
+        else:
+            # O objetivo é escrito para gente ler: 04/09/2026.
+            m = re.search(r"(\d{2})/(\d{2})/(\d{4})", objetivo)
+            if m:
+                e["data"] = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
     m = re.search(r"conta\s+(\d+)", objetivo, re.I)
     if m and not e["cd_conta"]:
         e["cd_conta"] = int(m.group(1))

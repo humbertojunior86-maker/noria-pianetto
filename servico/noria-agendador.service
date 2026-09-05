@@ -1,0 +1,17 @@
+[Unit]
+Description=NÓRIA — agendador (abre missões sem ninguém pedir)
+After=noria-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/noria
+Environment="NORIA_DB=/opt/noria/dados/noria.db"
+Environment="NORIA_SEGREDOS=/opt/noria/.secrets"
+ExecStart=/opt/noria/venv/bin/python agendador.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
