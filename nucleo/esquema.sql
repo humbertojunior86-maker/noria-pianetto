@@ -88,6 +88,11 @@ CREATE INDEX IF NOT EXISTS ix_missao_emp ON missao(empresa_id, estado);
 CREATE TABLE IF NOT EXISTS criterio (
   id            INTEGER PRIMARY KEY,
   missao_id     INTEGER NOT NULL REFERENCES missao(id),
+  tarefa_chave  TEXT,                 -- a qual tarefa este critério se aplica.
+                                      -- NULL = missão inteira (rows antigas).
+                                      -- A contraprova tem critério próprio: o
+                                      -- verificador da apuração não serve para
+                                      -- julgar quem veio contestá-la.
   ordem         INTEGER NOT NULL,
   descricao     TEXT NOT NULL,
   camada        TEXT NOT NULL,        -- estrutural|objetiva|documental|especializada|global|operacional

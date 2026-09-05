@@ -313,6 +313,13 @@ def cancelar(mid: int, dados: dict = Body(default={}), s: dict = Depends(sessao)
 
 
 # -------------------------------------------------------------------- agentes
+def _quem_ele_audita(aid: str) -> list[str]:
+    """Quais agentes este aqui é chamado para contestar."""
+    from nucleo.orquestrador import CONTRAPROVA
+    return [dono for dono, cps in CONTRAPROVA.items()
+            if any(c["agente"] == aid for c in cps)]
+
+
 @app.get("/api/agentes")
 def agentes(s: dict = Depends(sessao)):
     saida = []
@@ -328,6 +335,10 @@ def agentes(s: dict = Depends(sessao)):
             "acoes": d.acoes, "competencias": d.competencias,
             "entradas": d.entradas, "saidas": d.saidas,
             "tarefas_aprovadas": feito,
+            # audita = tem contraprova implementada: sabe refazer o número de
+            # outro agente por um caminho diferente do banco.
+            "audita": d.auditor is not None,
+            "audita_quem": _quem_ele_audita(d.id),
         })
     return {"agentes": saida}
 

@@ -6,9 +6,11 @@ import * as f from '../fmt.js';
 import { el, juntar, painel, vazio, etiqueta, icone, tabela, secao, migalhas, metrica, par } from '../ui.js';
 
 function selo(situacao) {
-  return situacao === 'habilitado'
-    ? etiqueta('Habilitado', 'ok', true)
-    : etiqueta('Sem integração', 'atencao', true);
+  if (situacao === 'habilitado') return etiqueta('Habilitado', 'ok', true);
+  // Revisor opera de verdade: contesta o numero de outro agente por outro
+  // caminho do banco. Nao abre missao propria, e isso nao e limitacao.
+  if (situacao === 'revisor') return etiqueta('Revisor', 'acento', true);
+  return etiqueta('Sem integração', 'atencao', true);
 }
 
 function cartao(a, ir) {
@@ -22,7 +24,10 @@ function cartao(a, ir) {
         selo(a.situacao),
       ]),
       el('p', { style: 'margin:12px 0 0;font-size:var(--t-peq);color:var(--tinta-2)', texto: a.promessa }),
-      a.situacao !== 'habilitado' && a.limitacao
+      a.situacao === 'revisor'
+        ? el('p.ajuda', { style: 'margin:8px 0 0', texto: 'Entra depois que outro agente entrega e confere o número por um caminho diferente do banco.' })
+        : null,
+      a.situacao !== 'habilitado' && a.situacao !== 'revisor' && a.limitacao
         ? el('p.aviso-linha', null, [icone('alerta', 14), `Limitação: ${a.limitacao}`])
         : null,
       el('div.par-linhas', { style: 'margin-top:16px' }, [
@@ -40,7 +45,9 @@ async function lista(raiz, { ir }) {
   const d = await api.agentes();
   const itens = d.agentes || [];
   const hab = itens.filter((a) => a.situacao === 'habilitado');
-  const sem = itens.filter((a) => a.situacao !== 'habilitado');
+  const rev = itens.filter((a) => a.situacao === 'revisor');
+  const sem = itens.filter((a) => a.situacao !== 'habilitado' && a.situacao !== 'revisor');
+  const audita = itens.filter((a) => a.audita);
 
   const porArea = {};
   sem.forEach((a) => { (porArea[a.area] = porArea[a.area] || []).push(a); });
@@ -49,8 +56,13 @@ async function lista(raiz, { ir }) {
     el('div.grade.g3', { style: 'margin-bottom:32px' }, [
       metrica('Cadastrados', f.numero(itens.length), 'catálogo completo de agentes'),
       metrica('Habilitados', f.numero(hab.length), 'com ferramenta e executor prontos', { destaque: hab.length > 0 }),
-      metrica('Sem integração', f.numero(sem.length), 'cada um com a limitação escrita'),
+      metrica('Contestam outro agente', f.numero(audita.length), 'refazem o número por outro caminho do banco', { destaque: audita.length > 0 }),
     ]),
+
+    rev.length
+      ? secao('Revisores', 'Não abrem missão própria. Entram quando outro agente já entregou um número, para conferi-lo por outra porta do banco.',
+        el('div.grade.g2', null, rev.map((a) => cartao(a, ir))))
+      : null,
 
     secao('Habilitados', 'Podem receber tarefa agora, com as ações limitadas às fontes autorizadas.',
       hab.length

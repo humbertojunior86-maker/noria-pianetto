@@ -123,25 +123,95 @@ def documental(entrega: dict, empresa_id: int) -> list[tuple]:
 
 # ------------------------------------------------------------------ camada 4
 def especializada(entrega: dict, tarefa: dict, empresa_id: int) -> list[tuple]:
-    """Revisão por agente da área, diferente do executor.
+    """Estado da revisão por par NO MOMENTO da entrega.
 
-    Enquanto não houver um segundo executor habilitado para o mesmo domínio,
-    isto devolve 'nao_verificavel' com o motivo escrito. Nunca 'aprovado'.
+    O veredito de verdade sai no fechamento da missão, em especializada_missao:
+    aqui a contraprova ainda nem rodou, porque ela depende desta entrega para
+    ter o que contestar. Esta camada só diz em que pé está. Nunca 'aprovado'.
     """
     from agentes import registro as ar
     dono = tarefa.get("agente_id")
     d = ar.obter(dono) if dono else None
     if d is None:
         return [("nao_verificavel", "tarefa sem agente responsável identificado")]
-    pares = [a for a in ar.todos()
-             if a.area == d.area and a.id != d.id and a.executor is not None]
-    if not pares:
+
+    if (bd.dj(tarefa.get("entradas"), {}) or {}).get("papel") == "contraprova":
         return [("nao_verificavel",
-                 f"não há segundo agente habilitado em {d.area} para revisar "
-                 f"de forma independente")]
+                 "contraprova não é contestada por outra contraprova — "
+                 "ela é a contestação")]
+
+    revs = _contraprovas_de(tarefa["id"])
+    if revs:
+        nomes = ", ".join(
+            (ar.obter(r["agente_id"]).nome if ar.obter(r["agente_id"])
+             else r["agente_id"]) for r in revs)
+        return [("nao_verificavel",
+                 f"contraprova com {nomes} ainda não rodou; o veredito sai no "
+                 f"fechamento da missão")]
     return [("nao_verificavel",
-             f"revisão por par disponível ({pares[0].nome}) mas ainda não "
-             f"acionada nesta versão")]
+             f"não há contraprova prevista para {d.papel} — este número saiu "
+             f"por um caminho só e ninguém o conferiu por outro")]
+
+
+def _contraprovas_de(tarefa_id: int) -> list[dict]:
+    """Tarefas de contraprova que apontam para esta tarefa."""
+    alvo = bd.linha("SELECT missao_id FROM tarefa WHERE id=?", (tarefa_id,))
+    if alvo is None:
+        return []
+    saida = []
+    for t in bd.linhas(
+            "SELECT * FROM tarefa WHERE missao_id=? AND estado <> 'substituida'",
+            (alvo["missao_id"],)):
+        e = bd.dj(t["entradas"], {}) or {}
+        if e.get("papel") == "contraprova" and e.get("auditar_tarefa") == tarefa_id:
+            saida.append(t)
+    return saida
+
+
+def especializada_missao(missao_id: int, empresa_id: int) -> list[dict]:
+    """Camada 4 de verdade: lê o que o auditor achou e dá o veredito.
+
+    Roda no fechamento, quando a contraprova já correu. Contradição aqui não
+    manda o apurador tentar de novo: repetir daria o mesmo número, porque o
+    número dele não está errado — está sendo lido de outro jeito por outra
+    porta do banco. Isso é divergindo, e quem decide é gente.
+    """
+    from agentes import registro as ar
+    achados: list[dict] = []
+    for t in bd.linhas(
+            "SELECT * FROM tarefa WHERE missao_id=? AND estado <> 'substituida'",
+            (missao_id,)):
+        ent_t = bd.dj(t["entradas"], {}) or {}
+        if ent_t.get("papel") != "contraprova":
+            continue
+        alvo_id = ent_t.get("auditar_tarefa")
+        ep = bd.linha("SELECT id FROM entrega WHERE tarefa_id=? "
+                      "ORDER BY id DESC LIMIT 1", (alvo_id,))
+        ec = bd.linha("SELECT * FROM entrega WHERE tarefa_id=? "
+                      "ORDER BY id DESC LIMIT 1", (t["id"],))
+        rev = ar.obter(t["agente_id"])
+        nome = rev.nome if rev else t["agente_id"]
+
+        if ec is None:
+            r, just = ("nao_verificavel",
+                       f"{nome} não chegou a entregar a contraprova "
+                       f"({t['estado']})")
+        else:
+            dados = bd.dj(ec["resultado"], {}) or {}
+            vd = dados.get("veredito")
+            if vd == "confirma":
+                r = "aprovado"
+            elif vd == "contradiz":
+                r = "reprovado"
+            else:
+                r = "nao_verificavel"
+            just = f"{nome} conferiu por outro caminho: {ec['resumo']}"
+
+        _reg(missao_id, ep["id"] if ep else None, None, "especializada",
+             f"agente:{t['agente_id']}", r, just, empresa_id, independente=1)
+        achados.append({"camada": "especializada", "resultado": r,
+                        "justificativa": just})
+    return achados
 
 
 # ------------------------------------------------------------------ camada 5
@@ -206,9 +276,13 @@ def validar_entrega(entrega_id: int, bruto: dict) -> str:
     e = bd.linha("SELECT * FROM entrega WHERE id=?", (entrega_id,))
     t = bd.linha("SELECT * FROM tarefa WHERE id=?", (e["tarefa_id"],))
     emp = e["empresa_id"]
+    # Cada tarefa é julgada pelos critérios DELA. O verificador da apuração
+    # não serve para julgar a contraprova: ela devolve outra forma de dado.
+    # tarefa_chave NULL é critério antigo, de antes desta separação.
     criterios = bd.linhas(
-        "SELECT * FROM criterio WHERE missao_id=? AND camada='objetiva'",
-        (e["missao_id"],))
+        "SELECT * FROM criterio WHERE missao_id=? AND camada='objetiva' "
+        "AND (tarefa_chave IS NULL OR tarefa_chave=?)",
+        (e["missao_id"], t["chave"]))
 
     resultados: list[str] = []
 
@@ -245,6 +319,7 @@ def validar_entrega(entrega_id: int, bruto: dict) -> str:
 def validar_missao(missao_id: int, empresa_id: int) -> tuple[str, list[dict]]:
     """Camadas 5 e 6. Devolve (natureza_do_resultado, achados)."""
     achados = []
+    achados.extend(especializada_missao(missao_id, empresa_id))
     for r, just in global_(missao_id, empresa_id):
         _reg(missao_id, None, None, "global", "codigo:coerencia", r, just,
              empresa_id, independente=1)
@@ -262,7 +337,15 @@ def validar_missao(missao_id: int, empresa_id: int) -> tuple[str, list[dict]]:
         "SELECT COUNT(*) n FROM acao_externa WHERE missao_id=? AND "
         "estado IN ('proposta','aguardando','aprovada')", (missao_id,))["n"]
 
-    if houve_acao:
+    # Contraprova que discordou muda a natureza do resultado. Não é análise
+    # entregue: é dois caminhos do banco dizendo coisas diferentes sobre o
+    # mesmo fato, e isso precisa de gente para desempatar.
+    contestada = any(a["camada"] == "especializada"
+                     and a["resultado"] == "reprovado" for a in achados)
+
+    if contestada:
+        natureza = "contestada"
+    elif houve_acao:
         conf = bd.linha(
             "SELECT COUNT(*) n FROM acao_externa WHERE missao_id=? AND "
             "estado='confirmada'", (missao_id,))["n"]

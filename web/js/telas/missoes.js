@@ -287,6 +287,20 @@ async function detalhe(raiz, id, { ir }) {
       metrica('Artefatos', f.numero(d.artefatos.length), d.artefatos.length ? 'prontos para baixar' : 'nenhum arquivo gerado'),
     ]),
 
+    (res.conferencia || []).length ? secao('Contraprova',
+      'Outro agente foi atrás do mesmo fato por outro caminho do banco. Ele não repetiu a consulta — se repetisse, o "confere" não valeria nada.',
+      el('div.grade', null, (res.conferencia || []).map((c) => {
+        const vd = { confirma: ['Confirma', 'ok'], contradiz: ['Contradiz', 'erro'] }[c.veredito] || ['Não verificável', 'atencao'];
+        return painel({
+          titulo: c.agente || c.agente_id,
+          nota: 'conferiu por outro caminho do banco',
+          corpo: [
+            el('div.chips', { style: 'margin-bottom:12px' }, [etiqueta(vd[0], vd[1], true)]),
+            el('p', { style: 'margin:0', texto: f.textoBr(c.resumo) }),
+          ],
+        });
+      }))) : null,
+
     res.conclusao ? secao(null, null, painel({
       titulo: 'Conclusão do núcleo',
       nota: res.natureza ? `natureza ${f.natureza(res.natureza).texto.toLowerCase()}` : null,

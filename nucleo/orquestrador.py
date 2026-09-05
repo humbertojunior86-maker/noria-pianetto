@@ -59,6 +59,35 @@ PADROES_NOVOS = [
     (r"cte pendent|sefaz|denegad|rejeitad|n[aã]o transmitid", "fiscal.documento"),
 ]
 
+# ---------------------------------------------------------------- contraprova
+# Quem contesta quem, e por qual caminho. A regra é uma só: o auditor NÃO pode
+# repetir a consulta do apurador. Ele tem que chegar ao mesmo fato por outra
+# porta do banco — outra tabela, outra chave — para poder discordar de verdade.
+# Repetir a mesma consulta e obter o mesmo número não confirma nada.
+CONTRAPROVA: dict[str, list[dict]] = {
+    "comercial.faturamento": [{
+        "agente": "fiscal.documento",
+        "pergunta": "os CT-es sem título estão mesmo autorizados na SEFAZ? "
+                    "documento cancelado ou nunca transmitido não tem título "
+                    "por estar certo, e não pode entrar como receita perdida"}],
+    "fiscal.documento": [{
+        "agente": "comercial.faturamento",
+        "pergunta": "algum documento sem autorização da SEFAZ já foi faturado? "
+                    "cobrar por documento que não existe legalmente é pior, e é "
+                    "outro problema"}],
+    "contas.pagar": [{
+        "agente": "auditoria.interna",
+        "pergunta": "os títulos de cada grupo vêm do mesmo documento fiscal ou "
+                    "de compras diferentes? duas notas distintas de mesmo valor "
+                    "são duas compras reais, não pagamento em dobro"}],
+    "controladoria.margem": [{
+        "agente": "frota.resultado",
+        "pergunta": "quantos CT-es de margem negativa são de frota própria? "
+                    "nesses a carta frete é transferência interna, não custo, "
+                    "e a margem negativa pode ser artefato de cálculo"}],
+}
+
+
 PADROES = [
     # (regex, agente, montador de entradas, critérios objetivos)
     (r"concilia|extrato|ofx|banco|caixa", "tesouraria.conciliador",
@@ -211,9 +240,10 @@ def planejar(missao_id: int, *, motivo: str = "plano inicial") -> dict:
         estados.mover_tarefa(t["id"], "substituida",
                              motivo=f"substituída pelo plano v{ver + 1}")
 
+    chave_ap = f"{d.id}#1"
     tid = bd.inserir("tarefa", {
         "empresa_id": emp, "missao_id": missao_id, "plano_id": plano_id,
-        "chave": f"{d.id}#1", "titulo": f"{d.papel}: {m['objetivo'][:80]}",
+        "chave": chave_ap, "titulo": f"{d.papel}: {m['objetivo'][:80]}",
         "objetivo": m["objetivo"], "agente_id": d.id, "agente_versao": d.versao,
         "entradas": bd.j(intencao["entradas"]), "fontes": bd.j(d.ferramentas),
         "acoes_permitidas": bd.j(d.acoes), "formato_entrega": "json+md",
@@ -232,18 +262,74 @@ def planejar(missao_id: int, *, motivo: str = "plano inicial") -> dict:
             p.setdefault("de", data)
             p.setdefault("ate", data)
         bd.inserir("criterio", {
-            "missao_id": missao_id, "ordem": i,
+            "missao_id": missao_id, "tarefa_chave": chave_ap, "ordem": i,
             "descricao": f"verificador {nome}", "camada": "objetiva",
             "verificador": nome, "parametros": bd.j(p), "obrigatorio": 1})
+
+    aud_ids = _plantar_contraprovas(m, d, plano_id, tid, chave_ap,
+                                    intencao["entradas"])
 
     bd.atualizar("missao", missao_id,
                  {"plano_vigente": plano_id, "atualizada_em": bd.agora()})
     if m["estado"] in ("rascunho",):
         estados.mover_missao(missao_id, "planejada", motivo=motivo)
+    quantos = 1 + len(aud_ids)
     bd.evento(emp, "plano.criado",
-              f"Plano v{ver + 1}: {d.nome} ({d.papel}) — {motivo}",
-              missao_id=missao_id, dados={"tarefas": 1})
-    return {"ok": True, "plano_id": plano_id, "tarefa_id": tid}
+              f"Plano v{ver + 1}: {d.nome} ({d.papel}) apura" +
+              (f", e {len(aud_ids)} contraprova(s) conferem por outro caminho"
+               if aud_ids else ", sem par habilitado para contestar") +
+              f" — {motivo}",
+              missao_id=missao_id, dados={"tarefas": quantos})
+    return {"ok": True, "plano_id": plano_id, "tarefa_id": tid,
+            "contraprovas": aud_ids}
+
+
+def _plantar_contraprovas(m: dict, d, plano_id: int, tid: int,
+                          chave_ap: str, entradas: dict) -> list[int]:
+    """Cria as tarefas que vão contestar a apuração.
+
+    A contraprova recebe as MESMAS entradas do apurador. Se ela olhasse outra
+    janela de dias ou outra filial, discordar não significaria nada: seriam
+    dois universos diferentes, não duas leituras do mesmo.
+    """
+    emp, missao_id = m["empresa_id"], m["id"]
+    criados: list[int] = []
+    for i, cp in enumerate(CONTRAPROVA.get(d.id, []), 1):
+        rev = ar.obter(cp["agente"])
+        if rev is None or rev.auditor is None:
+            bd.evento(emp, "contraprova.sem_par",
+                      f"{d.nome} apurou sem contraprova: {cp['agente']} não tem "
+                      f"auditor implementado.", missao_id=missao_id)
+            continue
+        chave_cp = f"{rev.id}#c{i}"
+        cid = bd.inserir("tarefa", {
+            "empresa_id": emp, "missao_id": missao_id, "plano_id": plano_id,
+            "chave": chave_cp,
+            "titulo": f"contraprova de {d.nome}: {cp['pergunta'][:70]}",
+            "objetivo": cp["pergunta"], "agente_id": rev.id,
+            "agente_versao": rev.versao,
+            "entradas": bd.j({**entradas, "papel": "contraprova",
+                              "auditar_tarefa": tid,
+                              "pergunta": cp["pergunta"]}),
+            "fontes": bd.j(rev.ferramentas),
+            "acoes_permitidas": bd.j(rev.acoes), "formato_entrega": "json+md",
+            "saidas_esperadas": bd.j({"veredito": "confirma|contradiz"}),
+            "prazo": m["prazo"],
+            "orcamento_centavos": int(rev.limites.get("custo_centavos", 0)),
+            # Contraprova não repete: se falhou, falhou. Insistir até concordar
+            # é o oposto de auditar.
+            "max_tentativas": 1, "tentativas": 0, "estado": "pendente",
+            "criada_em": bd.agora(), "atualizada_em": bd.agora()})
+        bd.inserir("dependencia",
+                   {"tarefa_id": cid, "depende_de": tid, "tipo": "dado"})
+        bd.inserir("criterio", {
+            "missao_id": missao_id, "tarefa_chave": chave_cp, "ordem": 1,
+            "descricao": "verificador toda_afirmacao_tem_evidencia",
+            "camada": "objetiva",
+            "verificador": "toda_afirmacao_tem_evidencia",
+            "parametros": bd.j({}), "obrigatorio": 1})
+        criados.append(cid)
+    return criados
 
 
 # ===========================================================================
@@ -292,9 +378,23 @@ def executar_tarefa(tarefa_id: int) -> dict:
                  {"tentativas": int(t["tentativas"]) + 1,
                   "atualizada_em": bd.agora()})
 
+    contraprova = entradas.get("papel") == "contraprova"
     try:
-        ent = d.executor(empresa_id=emp, missao_id=mid, tarefa_id=tarefa_id,
-                         entradas=entradas, acoes=bd.dj(t["acoes_permitidas"]))
+        if contraprova:
+            alvo = _alvo_da_contraprova(entradas.get("auditar_tarefa"))
+            if alvo is None:
+                estados.mover_tarefa(
+                    tarefa_id, "nao_verificavel",
+                    motivo="a apuração a ser contestada não produziu entrega")
+                limites.realizar(emp, mid, tarefa_id, reserva, 0, 0, 0)
+                return {"ok": False, "motivo": "sem_alvo"}
+            ent = d.auditor(empresa_id=emp, missao_id=mid, tarefa_id=tarefa_id,
+                            entradas=entradas,
+                            acoes=bd.dj(t["acoes_permitidas"]), alvo=alvo)
+        else:
+            ent = d.executor(empresa_id=emp, missao_id=mid, tarefa_id=tarefa_id,
+                             entradas=entradas,
+                             acoes=bd.dj(t["acoes_permitidas"]))
     except Exception as e:  # noqa: BLE001
         limites.realizar(emp, mid, tarefa_id, reserva, 0, 0, 0)
         estados.mover_tarefa(tarefa_id, "falha", motivo=f"erro do executor: {e}")
@@ -322,6 +422,21 @@ def executar_tarefa(tarefa_id: int) -> dict:
     estados.mover_tarefa(tarefa_id, veredito, motivo=f"validação: {veredito}")
     return {"ok": veredito == "aprovada", "entrega_id": entrega_id,
             "veredito": veredito}
+
+
+def _alvo_da_contraprova(tarefa_id) -> dict | None:
+    """O que o apurador afirmou, para o auditor ter o que contestar."""
+    if not tarefa_id:
+        return None
+    e = bd.linha("SELECT * FROM entrega WHERE tarefa_id=? "
+                 "ORDER BY id DESC LIMIT 1", (tarefa_id,))
+    if e is None:
+        return None
+    t = bd.linha("SELECT agente_id FROM tarefa WHERE id=?", (tarefa_id,))
+    return {"entrega_id": e["id"], "tarefa_id": tarefa_id,
+            "agente_id": t["agente_id"] if t else None,
+            "resumo": e["resumo"],
+            "resultado": bd.dj(e["resultado"], {}) or {}}
 
 
 def registrar_entrega(t: dict, ent) -> int:
@@ -425,16 +540,33 @@ def concluir(missao_id: int, empresa_id: int) -> dict:
     completo = total > 0 and aprovadas == total and not reprovou
 
     entregas = bd.linhas(
-        "SELECT resumo, resultado FROM entrega WHERE missao_id=? ORDER BY id",
-        (missao_id,))
+        "SELECT e.resumo, e.resultado, t.entradas, t.agente_id "
+        "FROM entrega e JOIN tarefa t ON t.id = e.tarefa_id "
+        "WHERE e.missao_id=? ORDER BY e.id", (missao_id,))
+    # A conclusão da missão é o que a APURAÇÃO achou. A contraprova entra ao
+    # lado, como conferência — trocar uma pela outra faria a missão terminar
+    # dizendo "conferi" em vez de dizer o que foi encontrado.
+    apur, confs = [], []
+    for e in entregas:
+        ent = bd.dj(e["entradas"], {}) or {}
+        (confs if ent.get("papel") == "contraprova" else apur).append(e)
+    principal = apur[-1] if apur else (entregas[-1] if entregas else None)
     pendencias = [a["justificativa"] for a in achados
                   if a["resultado"] != "aprovado"]
 
     resultado = {
         "natureza": natureza,
-        "conclusao": entregas[-1]["resumo"] if entregas else
+        "conclusao": principal["resumo"] if principal else
                      "Nenhuma entrega foi produzida.",
-        "dados": bd.dj(entregas[-1]["resultado"], {}) if entregas else {},
+        "dados": bd.dj(principal["resultado"], {}) if principal else {},
+        "conferencia": [{"agente_id": c["agente_id"],
+                         "agente": (ar.obter(c["agente_id"]).nome
+                                    if ar.obter(c["agente_id"])
+                                    else c["agente_id"]),
+                         "resumo": c["resumo"],
+                         "veredito": (bd.dj(c["resultado"], {}) or {})
+                                     .get("veredito")}
+                        for c in confs],
         "tarefas_aprovadas": aprovadas, "tarefas_totais": total,
         "o_que_nao_foi_possivel": pendencias,
         "achados_de_validacao": achados,
@@ -444,10 +576,15 @@ def concluir(missao_id: int, empresa_id: int) -> dict:
         "atualizada_em": bd.agora()})
 
     alvo = "concluida" if completo else "parcial"
-    estados.mover_missao(missao_id, alvo,
-                         motivo=("Conclusão sustentada por evidência."
-                                 if completo else
-                                 "Conclusão parcial — o que faltou está escrito."))
+    if natureza == "contestada":
+        motivo_fim = ("A contraprova discordou da apuração. O número fica "
+                      "registrado com a discordância ao lado, e não vale como "
+                      "conclusão até alguém desempatar.")
+    elif completo:
+        motivo_fim = "Conclusão sustentada por evidência e conferida por outro caminho."
+    else:
+        motivo_fim = "Conclusão parcial — o que faltou está escrito."
+    estados.mover_missao(missao_id, alvo, motivo=motivo_fim)
     bd.evento(empresa_id, "missao.encerrada",
               resultado["conclusao"], missao_id=missao_id,
               dados={"natureza": natureza, "estado": alvo})

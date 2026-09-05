@@ -502,6 +502,355 @@ SELECT 'pendente', b.situacao, NULL, NULL,
  LIMIT %(limite)s""",
         ["dias", "cd_pessoa_filial", "limite"], False,
         "CT-es dos ultimos N dias com situacao SEFAZ diferente de autorizado"),
+
+    # ------------------------------------------------------- CONTRAPROVAS
+    # Cada uma existe para um agente CONTESTAR o numero de outro agente,
+    # chegando ao mesmo fato por outro caminho no banco. Nao substituem a
+    # consulta original: dizem o que a original nao pode dizer.
+
+    "contraprova.cte_sem_titulo_situacao": (
+        """\
+-- contraprova.cte_sem_titulo_situacao
+-- CONTRAPROVA de faturamento.cte_sem_titulo (agente comercial).
+-- A consulta original ja entra filtrando ctrc_cte.cd_status = 100 e
+-- dt_cancelamento IS NULL: ela so ve o CT-e autorizado e vigente. Aqui o
+-- universo e TODO documento sem titulo (ctrc.cd_movimento IS NULL) na MESMA
+-- janela, quebrado pela situacao real na SEFAZ (ctrc_cte.cd_status +
+-- status_cte.ds_status). CT-e cancelado, rejeitado ou nunca transmitido NAO
+-- deveria ter titulo: ele esta corretamente sem titulo e nao e receita
+-- nao faturada. Quem some da conta do comercial aparece aqui.
+WITH base AS (
+  SELECT c.cd_ctrc, c.vl_total, c.dt_emissao, c.dt_cancelamento, c.id_modelo,
+         cc.cd_status,
+         CASE
+           WHEN c.id_modelo = '55'               THEN 'nao_e_cte_modelo_55'
+           WHEN cc.cd_ctrc IS NULL               THEN 'nunca_transmitido'
+           WHEN cc.cd_status IS NULL             THEN 'sem_retorno_sefaz'
+           WHEN cc.cd_status = 100               THEN 'autorizado'
+           WHEN cc.cd_status = 101               THEN 'cancelado'
+           WHEN cc.cd_status = 102               THEN 'inutilizado'
+           WHEN cc.cd_status IN (110, 301, 303)  THEN 'denegado'
+           ELSE 'rejeitado'
+         END AS situacao_sefaz
+    FROM ctrc c
+    LEFT JOIN ctrc_cte cc ON cc.cd_ctrc = c.cd_ctrc
+   WHERE c.dt_emissao BETWEEN CURRENT_DATE - %(dias)s AND CURRENT_DATE - %(carencia_dias)s
+     AND c.cd_movimento IS NULL
+     AND (%(cd_pessoa_filial)s IS NULL OR c.cd_pessoa_filial = %(cd_pessoa_filial)s)
+), cls AS (
+  -- 'autorizado_vigente' e exatamente o universo da consulta original: o unico
+  -- grupo em que a falta de titulo e de fato receita nao faturada.
+  SELECT b.*,
+         CASE WHEN b.situacao_sefaz = 'autorizado' AND b.dt_cancelamento IS NULL
+                THEN 'autorizado_vigente'
+              WHEN b.situacao_sefaz = 'autorizado'
+                THEN 'autorizado_cancelado_no_erp'
+              ELSE b.situacao_sefaz END AS situacao
+    FROM base b
+), tot AS (
+  SELECT count(*) AS qt, sum(vl_total) AS vl FROM cls
+)
+-- linha 'total': a janela inteira de CT-es sem titulo
+SELECT 1 AS nr_ordem, 'total' AS linha, 'TODOS_SEM_TITULO' AS situacao,
+       NULL::int AS cd_status, NULL::text AS ds_status,
+       t.qt AS qt_ctes, t.vl AS vl_ctes,
+       100.00::numeric AS pr_qt,
+       NULL::bigint AS qt_cancelado_no_erp,
+       NULL::date AS dt_emissao_min, NULL::date AS dt_emissao_max
+  FROM tot t
+UNION ALL
+-- linhas 'subtotal': autorizado e vigente (o numero do comercial) contra o resto
+SELECT 2, 'subtotal',
+       CASE WHEN c.situacao = 'autorizado_vigente' THEN 'AUTORIZADO_VIGENTE'
+            ELSE 'DEMAIS_SITUACOES' END,
+       NULL, NULL,
+       count(*), sum(c.vl_total),
+       round(100.0 * count(*) / NULLIF((SELECT qt FROM tot), 0), 2),
+       count(*) FILTER (WHERE c.dt_cancelamento IS NOT NULL),
+       min(c.dt_emissao), max(c.dt_emissao)
+  FROM cls c
+ GROUP BY 3
+UNION ALL
+-- linhas 'situacao': quebra fina por situacao SEFAZ e codigo, com o texto do catalogo
+SELECT 3, 'situacao', c.situacao, c.cd_status,
+       left(coalesce(s.ds_status, '(sem registro em ctrc_cte)'), 140),
+       count(*), sum(c.vl_total),
+       round(100.0 * count(*) / NULLIF((SELECT qt FROM tot), 0), 2),
+       count(*) FILTER (WHERE c.dt_cancelamento IS NOT NULL),
+       min(c.dt_emissao), max(c.dt_emissao)
+  FROM cls c
+  LEFT JOIN status_cte s ON s.cd_status = c.cd_status
+ GROUP BY c.situacao, c.cd_status, 5
+ ORDER BY 1, 6 DESC
+ LIMIT %(limite)s""",
+        ["dias", "carencia_dias", "cd_pessoa_filial", "limite"], False,
+        "CONTRAPROVA de faturamento.cte_sem_titulo: CT-es sem titulo quebrados pela situacao na SEFAZ - autorizado vigente contra cancelado/rejeitado/nao transmitido"),
+
+    "contraprova.cte_pendente_faturado": (
+        """\
+-- contraprova.cte_pendente_faturado
+-- CONTRAPROVA de fiscal.cte_pendente (agente fiscal).
+-- O fiscal lista o documento sem autorizacao da SEFAZ como problema fiscal.
+-- Aqui vem a pergunta do comercial: quantos desses JA FORAM FATURADOS?
+-- Titulo a receber existe quando ctrc.cd_movimento nao e NULL (vinculo
+-- ctrc.cd_movimento -> titulo.cd_movimento, id_tipo = 1). Documento nao
+-- autorizado e com titulo gerado nao e pendencia de digitacao: e cobranca
+-- emitida sem documento fiscal valido, problema mais grave e de outra natureza.
+WITH base AS (
+  SELECT c.cd_ctrc, c.nr_ctrc, btrim(c.ds_serie) AS ds_serie, c.id_modelo,
+         c.dt_emissao, c.vl_total, c.cd_movimento, c.cd_pessoa_filial,
+         c.cd_pessoa_pagador, c.dt_cancelamento, cc.cd_status,
+         CASE
+           WHEN c.id_modelo = '55'               THEN 'nao_e_cte_modelo_55'
+           WHEN cc.cd_ctrc IS NULL               THEN 'nunca_transmitido'
+           WHEN cc.cd_status IS NULL             THEN 'sem_retorno_sefaz'
+           WHEN cc.cd_status = 100               THEN 'autorizado'
+           WHEN cc.cd_status = 101               THEN 'cancelado'
+           WHEN cc.cd_status = 102               THEN 'inutilizado'
+           WHEN cc.cd_status IN (110, 301, 303)  THEN 'denegado'
+           ELSE 'rejeitado'
+         END AS situacao
+    FROM ctrc c
+    LEFT JOIN ctrc_cte cc ON cc.cd_ctrc = c.cd_ctrc
+   WHERE c.dt_emissao >= CURRENT_DATE - %(dias)s
+     AND (%(cd_pessoa_filial)s IS NULL OR c.cd_pessoa_filial = %(cd_pessoa_filial)s)
+), pend AS (
+  -- mesmo recorte da lista 'pendente' de fiscal.cte_pendente: sem autorizacao
+  -- da SEFAZ e ainda nao cancelado no ERP
+  SELECT b.*,
+         CASE WHEN b.cd_movimento IS NOT NULL THEN 'com_titulo' ELSE 'sem_titulo' END AS classe
+    FROM base b
+   WHERE b.situacao IN ('nunca_transmitido', 'sem_retorno_sefaz', 'rejeitado',
+                        'denegado', 'inutilizado')
+     AND b.dt_cancelamento IS NULL
+), tit AS (
+  -- o titulo a receber de fato existente, somado por CT-e (pode ter parcelas)
+  SELECT p.cd_ctrc,
+         count(t.cd_titulo) AS qt_titulos,
+         sum(t.vl_total) AS vl_titulo,
+         sum(t.vl_total - COALESCE(t.vl_pago, 0)) AS vl_saldo_aberto,
+         min(t.dt_vencimento) AS dt_vencimento,
+         count(t.cd_titulo) FILTER (WHERE t.dt_quitacao IS NOT NULL) AS qt_quitados
+    FROM pend p
+    LEFT JOIN titulo t ON t.cd_movimento = p.cd_movimento AND t.id_tipo = 1
+   WHERE p.classe = 'com_titulo'
+   GROUP BY 1
+)
+-- linha 'resumo': o corte que o fiscal nao fez — com titulo contra sem titulo
+SELECT 1 AS nr_ordem, 'resumo' AS linha, p.classe AS classe, NULL::text AS situacao,
+       count(*) AS qt_ctes, sum(p.vl_total) AS vl_ctes,
+       round(100.0 * count(*) / NULLIF((SELECT count(*) FROM pend), 0), 2) AS pr_qt,
+       NULL::int AS cd_ctrc, NULL::bigint AS nr_ctrc, NULL::text AS ds_serie,
+       NULL::date AS dt_emissao, NULL::numeric AS vl_total, NULL::int AS cd_status,
+       NULL::text AS ds_status, NULL::text AS cliente, NULL::int AS cd_pessoa_filial,
+       NULL::int AS cd_movimento, NULL::bigint AS qt_titulos, NULL::numeric AS vl_titulo,
+       NULL::numeric AS vl_saldo_aberto, NULL::date AS dt_vencimento,
+       NULL::bigint AS qt_titulos_quitados, NULL::int AS dias_parado
+  FROM pend p
+ GROUP BY p.classe
+UNION ALL
+-- linha 'resumo_situacao': dentro dos que TEM titulo, qual a situacao SEFAZ
+SELECT 2, 'resumo_situacao', 'com_titulo', p.situacao,
+       count(*), sum(p.vl_total),
+       round(100.0 * count(*) / NULLIF((SELECT count(*) FROM pend), 0), 2),
+       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+       NULL, NULL, NULL, NULL
+  FROM pend p
+ WHERE p.classe = 'com_titulo'
+ GROUP BY p.situacao
+UNION ALL
+-- linha 'detalhe': cada documento nao autorizado que JA tem titulo a receber
+SELECT 3, 'detalhe', 'com_titulo', p.situacao,
+       NULL, NULL, NULL,
+       p.cd_ctrc, p.nr_ctrc, p.ds_serie, p.dt_emissao, p.vl_total, p.cd_status,
+       left(coalesce(s.ds_status, '(sem retorno da SEFAZ)'), 140),
+       coalesce(nullif(pe.nm_fantasia, ''), pe.nm_pessoa),
+       p.cd_pessoa_filial, p.cd_movimento,
+       tit.qt_titulos, tit.vl_titulo, tit.vl_saldo_aberto, tit.dt_vencimento,
+       tit.qt_quitados, (CURRENT_DATE - p.dt_emissao)
+  FROM pend p
+  JOIN tit ON tit.cd_ctrc = p.cd_ctrc
+  LEFT JOIN status_cte s ON s.cd_status = p.cd_status
+  LEFT JOIN pessoa pe    ON pe.cd_pessoa = p.cd_pessoa_pagador
+ WHERE p.classe = 'com_titulo'
+ ORDER BY 1, 5 DESC NULLS LAST, 12 DESC NULLS LAST
+ LIMIT %(limite)s""",
+        ["dias", "cd_pessoa_filial", "limite"], False,
+        "CONTRAPROVA de fiscal.cte_pendente: quantos documentos sem autorizacao da SEFAZ ja tem titulo a receber gerado"),
+
+    "contraprova.duplicidade_documento": (
+        """\
+-- contraprova.duplicidade_documento
+-- CONTRAPROVA de pagar.duplicidade_suspeita (agente financeiro).
+-- A consulta original agrupa por fornecedor + valor + vencimento proximo, e por
+-- isso nao distingue "a mesma nota lancada duas vezes" de "duas compras iguais".
+-- Introspeccao feita antes de escrever: titulo e movimento NAO tem nr_documento,
+-- nr_nota nem nr_nf (movimento so tem cd_movimento/qt_parcela; nota_fiscal tem
+-- nr_nota_fiscal mas cd_movimento nunca casa com titulo a pagar - zero linhas em
+-- 18.267 titulos testados). O numero do documento do titulo a pagar esta em
+-- caixa.nr_documento, ligado por caixa.cd_movimento = titulo.cd_movimento
+-- (cobertura de cerca de 47 por cento dos titulos). O sufixo de parcela
+-- ('1944344/1') e cortado
+-- para nao inventar documento distinto onde ha so parcela.
+-- Prova pratica: SUECIA 2 x R$ 998.000,00 sao documentos 216783 e 216785 -
+-- dois caminhoes, nao um pagamento em dobro.
+WITH base AS (
+  SELECT t.cd_titulo, t.cd_pessoa, round(t.vl_total, 2) AS vl,
+         t.dt_vencimento, t.dt_quitacao, t.cd_movimento,
+         m.qt_parcela, m.cd_pessoa_filial,
+         -- documento fiscal do lancamento, sem o sufixo de parcela
+         (SELECT string_agg(DISTINCT split_part(btrim(k.nr_documento), '/', 1), ',')
+            FROM caixa k
+           WHERE k.cd_movimento = t.cd_movimento
+             AND nullif(btrim(k.nr_documento), '') IS NOT NULL) AS nr_documento
+    FROM titulo t
+    JOIN movimento m ON m.cd_movimento = t.cd_movimento
+   WHERE t.id_tipo = 2
+     AND t.vl_total >= %(vl_min)s
+     AND t.dt_vencimento >= CURRENT_DATE - %(dias_retro)s
+     AND COALESCE(m.qt_parcela, 1) <= %(max_parcelas)s
+     AND (%(cd_pessoa_filial)s IS NULL OR m.cd_pessoa_filial = %(cd_pessoa_filial)s)
+), grp AS (
+  -- mesmo agrupamento da consulta original: fornecedor + valor + janela de :dias
+  SELECT b.cd_pessoa, b.vl,
+         count(*) AS qt_titulos,
+         count(DISTINCT b.cd_movimento) AS qt_movimentos,
+         count(b.nr_documento) AS qt_titulos_com_documento,
+         count(DISTINCT b.nr_documento) AS qt_documentos,
+         min(b.dt_vencimento) AS venc_ini,
+         max(b.dt_vencimento) AS venc_fim,
+         count(*) FILTER (WHERE b.dt_quitacao IS NOT NULL) AS qt_pagos,
+         max(COALESCE(b.qt_parcela, 1)) AS qt_parcela_max,
+         array_agg(b.cd_titulo ORDER BY b.dt_vencimento) AS ar_cd_titulo,
+         array_agg(DISTINCT b.cd_movimento) AS ar_cd_movimento,
+         array_agg(DISTINCT b.nr_documento) FILTER (WHERE b.nr_documento IS NOT NULL) AS ar_documento
+    FROM base b
+   GROUP BY 1, 2
+  HAVING count(*) > 1
+     AND max(b.dt_vencimento) - min(b.dt_vencimento) <= %(dias)s
+), cls AS (
+  -- Classificacao: e a MESMA compra lancada duas vezes, ou sao compras
+  -- diferentes? Um unico cd_movimento com dois titulos iguais nao e duplicidade:
+  -- e o mesmo lancamento parcelado (qt_parcela > 1) com parcelas de igual valor
+  -- e vencimentos vizinhos. Duplicidade forte exige lancamentos DIFERENTES
+  -- apontando para o MESMO numero de documento.
+  SELECT g.*,
+         CASE
+           WHEN g.qt_movimentos = 1                      THEN 'mesmo_movimento_parcelado'
+           WHEN g.qt_titulos_com_documento < g.qt_titulos THEN 'documento_desconhecido'
+           WHEN g.qt_documentos = 1                       THEN 'mesmo_documento'
+           ELSE 'documentos_distintos'
+         END AS classificacao
+    FROM grp g
+)
+-- linha 'total': quantos grupos e quanta exposicao em cada classificacao
+SELECT 1 AS nr_ordem, 'total' AS linha, c.classificacao,
+       count(*) AS qt_grupos,
+       sum(c.qt_titulos) AS qt_titulos,
+       sum(round(c.vl * (c.qt_titulos - 1), 2)) AS vl_exposicao,
+       round(100.0 * count(*) / NULLIF((SELECT count(*) FROM cls), 0), 2) AS pr_grupos,
+       NULL::int AS cd_pessoa, NULL::text AS fornecedor, NULL::text AS nr_cnpj_cpf,
+       NULL::numeric AS vl_titulo, NULL::bigint AS qt_movimentos,
+       NULL::bigint AS qt_documentos, NULL::bigint AS qt_titulos_com_documento,
+       NULL::bigint AS qt_pagos, NULL::int AS qt_parcela_max,
+       NULL::date AS venc_ini, NULL::date AS venc_fim,
+       NULL::int[] AS ar_cd_titulo, NULL::int[] AS ar_cd_movimento,
+       NULL::text[] AS ar_documento
+  FROM cls c
+ GROUP BY c.classificacao
+UNION ALL
+-- linha 'grupo': cada grupo suspeito com o veredito documento a documento
+SELECT 2, 'grupo', c.classificacao,
+       1, c.qt_titulos, round(c.vl * (c.qt_titulos - 1), 2), NULL,
+       c.cd_pessoa,
+       coalesce(nullif(p.nm_fantasia, ''), p.nm_pessoa),
+       p.nr_cnpj_cpf,
+       c.vl, c.qt_movimentos, c.qt_documentos, c.qt_titulos_com_documento,
+       c.qt_pagos, c.qt_parcela_max, c.venc_ini, c.venc_fim,
+       c.ar_cd_titulo, c.ar_cd_movimento, c.ar_documento
+  FROM cls c
+  LEFT JOIN pessoa p ON p.cd_pessoa = c.cd_pessoa
+ ORDER BY 1, 6 DESC
+ LIMIT %(limite)s""",
+        ["dias", "dias_retro", "vl_min", "max_parcelas", "cd_pessoa_filial", "limite"], False,
+        "CONTRAPROVA de pagar.duplicidade_suspeita: os titulos do grupo vem do mesmo documento fiscal ou de documentos distintos"),
+
+    "contraprova.margem_frota_propria": (
+        """\
+-- contraprova.margem_frota_propria
+-- CONTRAPROVA de controladoria.margem_por_cte (agente de controladoria).
+-- A controladoria calcula custo = carta_frete.vl_frete. Isso vale para terceiro
+-- e agregado, mas NAO para frota propria: nesses CT-es a carta frete e emitida
+-- contra a propria Pianetto (id_proprietario_veiculo = 1 => transportadora = 2),
+-- ou seja e TRANSFERENCIA INTERNA, nao saida de caixa. Tratar isso como custo
+-- ja produziu -R$ 2,58 milhoes de prejuizo inexistente. O custo real de frota
+-- propria vive em caixa_veiculo -> caixa.
+-- Reproduz exatamente o recorte 'pior_caso' da original (margem negativa ou
+-- abaixo de :pr_margem_min) e quebra por tipo de proprietario do veiculo.
+WITH ct AS (
+  SELECT c.cd_ctrc, c.nr_ctrc, btrim(c.ds_serie) AS ds_serie, c.dt_emissao,
+         c.vl_total, c.cd_pessoa_filial, c.cd_pessoa_pagador, c.cd_veiculo,
+         c.id_proprietario_veiculo,
+         (SELECT sum(cf.vl_frete) FROM carta_frete cf WHERE cf.cd_ctrc = c.cd_ctrc) AS vl_custo
+    FROM ctrc c
+   WHERE c.dt_cancelamento IS NULL
+     AND c.dt_emissao >= CURRENT_DATE - %(dias)s
+     AND (%(cd_pessoa_filial)s IS NULL OR c.cd_pessoa_filial = %(cd_pessoa_filial)s)
+), cls AS (
+  -- mesma classificacao da original: sem carta frete fica fora da margem
+  SELECT ct.*,
+         CASE WHEN ct.vl_custo IS NULL THEN 'sem_carta_frete' ELSE 'com_custo' END AS classe,
+         (ct.vl_total - COALESCE(ct.vl_custo, 0)) AS vl_margem,
+         CASE ct.id_proprietario_veiculo
+           WHEN 1 THEN 'frota_propria'
+           WHEN 2 THEN 'agregado'
+           WHEN 3 THEN 'terceiro'
+           ELSE 'nao_informado'
+         END AS tipo_proprietario
+    FROM ct
+), ruim AS (
+  -- exatamente as linhas 'pior_caso' da consulta original
+  SELECT * FROM cls
+   WHERE classe = 'com_custo'
+     AND (vl_margem < 0 OR 100.0 * vl_margem / NULLIF(vl_total, 0) < %(pr_margem_min)s)
+), tot AS (
+  SELECT count(*) AS qt, sum(vl_total) AS vl_receita, sum(vl_custo) AS vl_custo,
+         sum(vl_margem) AS vl_margem
+    FROM ruim
+)
+-- linha 'total': o bloco inteiro de CT-es abaixo do minimo, como a original ve
+SELECT 1 AS nr_ordem, 'total' AS linha, 'TODOS' AS tipo_proprietario,
+       NULL::smallint AS id_proprietario_veiculo,
+       t.qt AS qt_ctes, t.vl_receita, t.vl_custo, t.vl_margem,
+       round(100.0 * t.vl_margem / NULLIF(t.vl_receita, 0), 2) AS pr_margem,
+       100.00::numeric AS pr_qt,
+       NULL::bigint AS qt_margem_negativa, NULL::numeric AS vl_margem_negativa,
+       NULL::bigint AS qt_veiculos, NULL::numeric AS vl_custo_caixa_veiculo
+  FROM tot t
+UNION ALL
+-- linhas 'quebra': por tipo de proprietario. Em 'frota_propria' o vl_custo e
+-- carta frete interna e a margem negativa e artefato: o custo comparavel esta
+-- em vl_custo_caixa_veiculo (caixa_veiculo -> caixa, mesma janela).
+SELECT 2, 'quebra', r.tipo_proprietario, r.id_proprietario_veiculo,
+       count(*), sum(r.vl_total), sum(r.vl_custo), sum(r.vl_margem),
+       round(100.0 * sum(r.vl_margem) / NULLIF(sum(r.vl_total), 0), 2),
+       round(100.0 * count(*) / NULLIF((SELECT qt FROM tot), 0), 2),
+       count(*) FILTER (WHERE r.vl_margem < 0),
+       sum(r.vl_margem) FILTER (WHERE r.vl_margem < 0),
+       count(DISTINCT r.cd_veiculo),
+       (SELECT COALESCE(sum(k.vl_lancamento), 0)
+          FROM caixa_veiculo cv
+          JOIN caixa k ON k.cd_caixa = cv.cd_caixa
+         WHERE cv.cd_veiculo IN (SELECT r2.cd_veiculo FROM ruim r2
+                                  WHERE r2.id_proprietario_veiculo = r.id_proprietario_veiculo
+                                    AND r2.cd_veiculo IS NOT NULL)
+           AND k.dt_documento BETWEEN CURRENT_DATE - %(dias)s AND CURRENT_DATE)
+  FROM ruim r
+ GROUP BY r.tipo_proprietario, r.id_proprietario_veiculo
+ ORDER BY 1, 5 DESC
+ LIMIT %(limite)s""",
+        ["dias", "pr_margem_min", "cd_pessoa_filial", "limite"], False,
+        "CONTRAPROVA de controladoria.margem_por_cte: quanto da margem negativa e frota propria, onde a carta frete e transferencia interna"),
 }
 
 
@@ -524,6 +873,20 @@ PADROES: dict[str, dict] = {
     "frota.resultado_veiculo": {"dias": 90, "cd_pessoa_filial": None,
                                 "limite": 100},
     "fiscal.cte_pendente": {"dias": 90, "cd_pessoa_filial": None, "limite": 200},
+    # contraprovas: mesmos padroes das consultas que elas contestam, para que a
+    # comparacao seja de fato sobre o mesmo universo.
+    "contraprova.cte_sem_titulo_situacao": {"dias": 30, "carencia_dias": 0,
+                                            "cd_pessoa_filial": None,
+                                            "limite": 200},
+    "contraprova.cte_pendente_faturado": {"dias": 90, "cd_pessoa_filial": None,
+                                          "limite": 200},
+    "contraprova.duplicidade_documento": {"dias": 5, "dias_retro": 365,
+                                          "vl_min": 100, "max_parcelas": 3,
+                                          "cd_pessoa_filial": None,
+                                          "limite": 200},
+    "contraprova.margem_frota_propria": {"dias": 30, "pr_margem_min": 5,
+                                         "cd_pessoa_filial": None,
+                                         "limite": 100},
 }
 
 

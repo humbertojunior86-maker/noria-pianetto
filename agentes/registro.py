@@ -48,9 +48,18 @@ class Definicao:
     limites: dict
     criterios: list[str]
     executor: Callable[..., Entrega] | None = None
+    # Contraprova: recalcula o número de OUTRO agente por um caminho diferente
+    # do banco. Recebe `alvo` (a entrega que está sendo contestada) além dos
+    # argumentos normais. Um agente pode ter auditor sem ter executor: quem só
+    # revisa não abre missão própria, e isso é dito em vez de escondido.
+    auditor: Callable[..., Entrega] | None = None
 
     def situacao(self) -> tuple[str, str | None]:
         if self.executor is None:
+            if self.auditor is not None:
+                return ("revisor",
+                        "contesta o trabalho de outros agentes, mas ainda não "
+                        "abre missão própria")
             return "sem_integracao", "executor ainda não implementado"
         for fid in self.ferramentas:
             f = fb.obter(fid)
@@ -986,6 +995,296 @@ def exec_fiscal_cte_pendente(*, empresa_id, missao_id, tarefa_id, entradas,
 
 
 # ===========================================================================
+# Auditores (contraprova)
+# ===========================================================================
+# Cada função abaixo recebe `alvo`: a entrega de OUTRO agente, já registrada.
+# A regra é uma só e é dura: não repetir a consulta do apurador. O auditor
+# chega ao mesmo fato por outra porta do banco. Se chegasse pela mesma, o
+# "confere" dele não valeria nada — seria o mesmo SQL dizendo duas vezes a
+# mesma coisa.
+#
+# O veredito é sempre um de três: confirma, contradiz, nao_verificavel. E
+# "contradiz" não é acusação de erro: é dois caminhos discordando sobre o
+# mesmo número, o que é exatamente o que se quer descobrir.
+
+def _pr(v: float) -> str:
+    """Percentual com vírgula. Ponto decimal em número brasileiro é ruído."""
+    return f"{v:.1f}".replace(".", ",")
+
+
+def _veredito(nome_do_auditor, veredito, resumo, dados, evid,
+              incert=None, status="concluida") -> Entrega:
+    dados = {**dados, "veredito": veredito}
+    afirm = [{"texto": resumo, "natureza":
+              "fato" if veredito != "nao_verificavel" else "ausencia",
+              "evidencia": 0 if evid else None}]
+    return Entrega(status, resumo, dados, afirm, evid, incert or [])
+
+
+def _rodar(op, params, *, empresa_id, missao_id, tarefa_id, acoes):
+    return fb.rodar("atua", op, params, empresa_id=empresa_id,
+                    missao_id=missao_id, tarefa_id=tarefa_id,
+                    acoes_permitidas=acoes)
+
+
+def _bloqueada(msg) -> Entrega:
+    return Entrega("bloqueada", msg, {"veredito": "nao_verificavel"},
+                   pendencias=[msg])
+
+
+def aud_cte_sem_titulo(*, empresa_id, missao_id, tarefa_id, entradas, acoes,
+                       alvo) -> Entrega:
+    """Contesta Bruno: os CT-es sem título estão mesmo autorizados na SEFAZ?
+
+    Bruno conta CT-e sem `cd_movimento`. Isso mede ausência de título, não
+    direito a faturar: um CT-e cancelado na SEFAZ também não tem título, e
+    cobrar por ele seria erro. O caminho daqui é outro — `ctrc_cte.cd_status`.
+    """
+    dias = int(entradas.get("dias") or 30)
+    carencia = int(entradas.get("carencia_dias") or 0)
+    r = _rodar("contraprova.cte_sem_titulo_situacao",
+               {"dias": dias, "carencia_dias": carencia,
+                "cd_pessoa_filial": entradas.get("cd_pessoa_filial")},
+               empresa_id=empresa_id, missao_id=missao_id,
+               tarefa_id=tarefa_id, acoes=acoes)
+    if not r.ok:
+        return _bloqueada(f"situação na SEFAZ indisponível: {r.erro}")
+
+    linhas = r.dados["linhas"]
+    tot = next((l for l in linhas if l["linha"] == "total"), None)
+    aut = next((l for l in linhas if l["linha"] == "subtotal"
+                and l["situacao"] == "AUTORIZADO_VIGENTE"), None)
+    if tot is None or aut is None:
+        return _bloqueada("a contraprova não devolveu os subtotais por situação")
+
+    universo = int(tot["qt_ctes"] or 0)
+    qt_aut = int(aut["qt_ctes"] or 0)
+    vl_aut = _f(aut["vl_ctes"])
+    declarado = int((alvo.get("resultado") or {}).get("quantidade") or 0)
+    fora = universo - qt_aut
+    detalhe = [l for l in linhas if l["linha"] == "situacao"
+               and l["situacao"] != "autorizado_vigente"]
+    porque = ", ".join(f"{int(l['qt_ctes'])} {l['situacao'].replace('_', ' ')}"
+                       for l in detalhe[:5])
+
+    evid = [_ev("consulta", "atua", "contraprova.cte_sem_titulo_situacao",
+                f"{qt_aut} autorizados de {universo} sem título",
+                r.dados.get("raiz", "atua:contraprova.cte_sem_titulo_situacao"),
+                r.dados.get("consultada_em", ""))]
+    dados = {"declarado_pelo_apurador": declarado,
+             "autorizados_na_sefaz": qt_aut, "valor_autorizado": round(vl_aut, 2),
+             "universo_sem_titulo": universo, "fora_de_faturamento": fora,
+             "por_situacao": {l["situacao"]: int(l["qt_ctes"] or 0)
+                              for l in detalhe}}
+
+    if declarado and qt_aut == declarado:
+        return _veredito("fiscal", "confirma",
+                         f"Confere por outro caminho: os {declarado} CT-es sem "
+                         f"título estão todos autorizados na SEFAZ "
+                         f"({brl(vl_aut)}). Fora deles há mais {fora} sem "
+                         f"título que não podem ser faturados — {porque}.",
+                         dados, evid)
+    if declarado:
+        return _veredito("fiscal", "contradiz",
+                         f"Não confere: o apurador declarou {declarado} CT-es "
+                         f"a faturar, mas só {qt_aut} estão autorizados na "
+                         f"SEFAZ. A diferença de {abs(declarado - qt_aut)} não "
+                         f"pode virar título — {porque}.",
+                         {**dados, "divergencia": declarado - qt_aut}, evid)
+    return _veredito("fiscal", "nao_verificavel",
+                     "a apuração não declarou quantidade comparável", dados,
+                     evid)
+
+
+def aud_cte_pendente_faturado(*, empresa_id, missao_id, tarefa_id, entradas,
+                              acoes, alvo) -> Entrega:
+    """Contesta Alan: algum documento sem autorização já virou dinheiro?
+
+    Alan conta o que está pendente na SEFAZ. A pergunta que ele não faz é a
+    que dói: desses pendentes, quantos já foram faturados e recebidos? Aí
+    deixa de ser pendência fiscal e vira receita sem lastro.
+    """
+    dias = int(entradas.get("dias") or 90)
+    r = _rodar("contraprova.cte_pendente_faturado",
+               {"dias": dias, "cd_pessoa_filial": entradas.get("cd_pessoa_filial")},
+               empresa_id=empresa_id, missao_id=missao_id,
+               tarefa_id=tarefa_id, acoes=acoes)
+    if not r.ok:
+        return _bloqueada(f"cruzamento com faturamento indisponível: {r.erro}")
+
+    linhas = r.dados["linhas"]
+    res = [l for l in linhas if l["linha"] == "resumo"]
+    com = next((l for l in res if l["classe"] == "com_titulo"), None)
+    sem = next((l for l in res if l["classe"] == "sem_titulo"), None)
+    if com is None or sem is None:
+        return _bloqueada("a contraprova não devolveu o resumo por classe")
+
+    qt_com = int(com["qt_ctes"] or 0)
+    vl_com = _f(com["vl_ctes"])
+    universo = qt_com + int(sem["qt_ctes"] or 0)
+    declarado = int((alvo.get("resultado") or {}).get("abertos")
+                    or (alvo.get("resultado") or {}).get("pendentes") or 0)
+    piores = [l for l in linhas if l["linha"] == "detalhe"][:3]
+
+    evid = [_ev("consulta", "atua", "contraprova.cte_pendente_faturado",
+                f"{qt_com} pendentes já com título, {brl(vl_com)}",
+                r.dados.get("raiz", "atua:contraprova.cte_pendente_faturado"),
+                r.dados.get("consultada_em", ""))]
+    dados = {"declarado_pelo_apurador": declarado,
+             "pendentes_no_universo": universo,
+             "pendentes_ja_faturados": qt_com,
+             "valor_ja_faturado": round(vl_com, 2),
+             "amostra": [{k: l.get(k) for k in
+                          ("cd_ctrc", "nr_ctrc", "dt_emissao", "vl_total",
+                           "cliente", "situacao")} for l in piores]}
+
+    if qt_com:
+        cli = piores[0].get("cliente") if piores else None
+        return _veredito("comercial", "contradiz",
+                         f"O número está certo, a leitura não: dos {universo} "
+                         f"documentos sem autorização, {qt_com} já foram "
+                         f"faturados — {brl(vl_com)} cobrados sem lastro "
+                         f"fiscal" + (f", o pior deles em {cli}." if cli else "."),
+                         {**dados, "divergencia": qt_com}, evid)
+    return _veredito("comercial", "confirma",
+                     f"Confere: nenhum dos {universo} documentos sem "
+                     f"autorização foi faturado. A pendência é fiscal e parou "
+                     f"antes de virar cobrança.", dados, evid)
+
+
+def aud_duplicidade_documento(*, empresa_id, missao_id, tarefa_id, entradas,
+                              acoes, alvo) -> Entrega:
+    """Contesta Íris: é o mesmo documento fiscal ou são compras diferentes?
+
+    Íris agrupa por fornecedor, valor e vencimento. Isso encontra pagamento em
+    duplicidade, mas encontra junto duas notas legítimas de mesmo valor. O
+    caminho daqui é o número do documento em `caixa.nr_documento` e o
+    parcelamento em `movimento` — não o formato do título.
+    """
+    r = _rodar("contraprova.duplicidade_documento",
+               {"dias": int(entradas.get("dias") or 5),
+                "dias_retro": int(entradas.get("dias_retro") or 365),
+                "vl_min": entradas.get("vl_min") or 100,
+                "cd_pessoa_filial": entradas.get("cd_pessoa_filial")},
+               empresa_id=empresa_id, missao_id=missao_id,
+               tarefa_id=tarefa_id, acoes=acoes)
+    if not r.ok:
+        return _bloqueada(f"conferência por documento indisponível: {r.erro}")
+
+    tot = [l for l in r.dados["linhas"] if l["linha"] == "total"]
+    if not tot:
+        return _bloqueada("a contraprova não devolveu a classificação dos grupos")
+    por = {l["classificacao"]: l for l in tot}
+    distintos = int(por.get("documentos_distintos", {}).get("qt_grupos") or 0)
+    parcelas = int(por.get("mesmo_movimento_parcelado", {}).get("qt_grupos") or 0)
+    incerto = int(por.get("documento_desconhecido", {}).get("qt_grupos") or 0)
+    total = distintos + parcelas + incerto
+    vl_expl = (_f(por.get("documentos_distintos", {}).get("vl_exposicao"))
+               + _f(por.get("mesmo_movimento_parcelado", {}).get("vl_exposicao")))
+    declarado = int((alvo.get("resultado") or {}).get("grupos") or 0)
+    expo = _f((alvo.get("resultado") or {}).get("exposicao"))
+
+    evid = [_ev("consulta", "atua", "contraprova.duplicidade_documento",
+                f"{distintos} documentos distintos, {parcelas} parcelas do "
+                f"mesmo movimento, {incerto} sem documento no banco",
+                r.dados.get("raiz", "atua:contraprova.duplicidade_documento"),
+                r.dados.get("consultada_em", ""))]
+    dados = {"declarado_pelo_apurador": declarado,
+             "exposicao_declarada": round(expo, 2),
+             "grupos_conferidos": total,
+             "documentos_distintos": distintos,
+             "parcelas_do_mesmo_movimento": parcelas,
+             "sem_documento_no_banco": incerto,
+             "valor_explicado": round(vl_expl, 2)}
+
+    if distintos + parcelas == 0:
+        return _veredito("auditoria", "confirma",
+                         f"Confere: nenhum dos {total} grupos tem explicação "
+                         f"legítima pelo número do documento. A suspeita de "
+                         f"duplicidade se mantém.", dados, evid)
+    pr = _pr(100.0 * (distintos + parcelas) / total if total else 0.0)
+    return _veredito("auditoria", "contradiz",
+                     f"Não é duplicidade: dos {total} grupos apontados, "
+                     f"{distintos} são documentos fiscais diferentes e "
+                     f"{parcelas} são parcelas do mesmo movimento — {pr}% da "
+                     f"suspeita, {brl(vl_expl)}, tem explicação. Sobram "
+                     f"{incerto} grupos sem número de documento no banco, e "
+                     f"só esses continuam de pé.",
+                     {**dados, "divergencia": distintos + parcelas}, evid)
+
+
+def aud_margem_frota_propria(*, empresa_id, missao_id, tarefa_id, entradas,
+                             acoes, alvo) -> Entrega:
+    """Contesta Caio: quanto da margem negativa é transferência interna?
+
+    Caio soma carta frete como custo. Em veículo de terceiro isso é dinheiro
+    que sai. Em frota própria é dinheiro que troca de bolso dentro da mesma
+    empresa — vira custo no CT-e e receita no caixa do veículo. Somar dos dois
+    lados inventa prejuízo. O caminho daqui é `ctrc.id_proprietario_veiculo`.
+    """
+    r = _rodar("contraprova.margem_frota_propria",
+               {"dias": int(entradas.get("dias") or 30),
+                "pr_margem_min": entradas.get("pr_margem_min") or 5,
+                "cd_pessoa_filial": entradas.get("cd_pessoa_filial")},
+               empresa_id=empresa_id, missao_id=missao_id,
+               tarefa_id=tarefa_id, acoes=acoes)
+    if not r.ok:
+        return _bloqueada(f"quebra por propriedade do veículo indisponível: {r.erro}")
+
+    linhas = r.dados["linhas"]
+    tot = next((l for l in linhas if l["linha"] == "total"), None)
+    quebras = {l["tipo_proprietario"]: l for l in linhas if l["linha"] == "quebra"}
+    if tot is None or not quebras:
+        return _bloqueada("a contraprova não devolveu a quebra por proprietário")
+
+    pro = quebras.get("frota_propria", {})
+    qt_pro = int(pro.get("qt_ctes") or 0)
+    custo_pro = _f(pro.get("vl_custo"))
+    neg_pro = int(pro.get("qt_margem_negativa") or 0)
+    universo = int(tot["qt_ctes"] or 0)
+    neg_total = sum(int(q.get("qt_margem_negativa") or 0) for q in quebras.values())
+    declarado_neg = int((alvo.get("resultado") or {}).get("ctes_margem_negativa")
+                        or (alvo.get("resultado") or {}).get("qt_margem_negativa")
+                        or 0)
+
+    evid = [_ev("consulta", "atua", "contraprova.margem_frota_propria",
+                f"{qt_pro} de {universo} CT-es abaixo do mínimo são frota "
+                f"própria; {brl(custo_pro)} de custo é transferência interna",
+                r.dados.get("raiz", "atua:contraprova.margem_frota_propria"),
+                r.dados.get("consultada_em", ""))]
+    dados = {"declarado_margem_negativa": declarado_neg,
+             "margem_negativa_conferida": neg_total,
+             "ctes_abaixo_do_minimo": universo,
+             "ctes_frota_propria": qt_pro,
+             "custo_que_e_transferencia_interna": round(custo_pro, 2),
+             "margem_negativa_em_frota_propria": neg_pro,
+             "por_proprietario": {k: {"ctes": int(v.get("qt_ctes") or 0),
+                                      "margem": round(_f(v.get("vl_margem")), 2)}
+                                  for k, v in quebras.items()}}
+
+    if declarado_neg and neg_total != declarado_neg:
+        return _veredito("frota", "contradiz",
+                         f"Não fecha: o apurador declarou {declarado_neg} CT-es "
+                         f"com margem negativa e a quebra por proprietário "
+                         f"soma {neg_total}.",
+                         {**dados, "divergencia": declarado_neg - neg_total}, evid)
+    if qt_pro:
+        pr = _pr(100.0 * qt_pro / universo if universo else 0.0)
+        return _veredito("frota", "contradiz",
+                         f"A conta fecha, a conclusão não: {qt_pro} dos "
+                         f"{universo} CT-es abaixo do mínimo ({pr}%) rodaram em "
+                         f"frota própria, onde {brl(custo_pro)} de carta frete "
+                         f"é transferência dentro de casa, não custo. O "
+                         f"prejuízo real está nos {universo - qt_pro} de "
+                         f"terceiro.",
+                         {**dados, "divergencia": qt_pro}, evid)
+    return _veredito("frota", "confirma",
+                     f"Confere: todos os {universo} CT-es abaixo do mínimo são "
+                     f"de veículo de terceiro, onde a carta frete é dinheiro "
+                     f"que realmente sai. A margem negativa é real.", dados, evid)
+
+
+# ===========================================================================
 # Cadastro
 # ===========================================================================
 registrar(Definicao(
@@ -1042,7 +1341,8 @@ registrar(Definicao(
     area="Comercial & Faturamento",
     promessa="Todo frete entregue vira fatura.", versao=1,
     competencias=["cte-sem-titulo", "backlog-de-faturamento"],
-    ferramentas=["atua"], acoes=["atua.faturamento.cte_sem_titulo"],
+    ferramentas=["atua"], acoes=["atua.faturamento.cte_sem_titulo",
+           "atua.contraprova.cte_pendente_faturado"],
     entradas={"dias": "int", "carencia_dias": "int",
               "cd_pessoa_filial": "int", "limite": "int"},
     saidas={"quantidade": "int", "valor": "num",
@@ -1052,6 +1352,7 @@ registrar(Definicao(
                "só CT-e autorizado e não cancelado",
                "carência declarada"],
     executor=exec_faturamento_cte_sem_titulo,
+    auditor=aud_cte_pendente_faturado,
 ))
 
 registrar(Definicao(
@@ -1097,7 +1398,9 @@ registrar(Definicao(
     promessa="O veículo que dá prejuízo não passa despercebido.", versao=1,
     competencias=["resultado-por-placa", "custo-de-veiculo",
                   "frota-administrativa"],
-    ferramentas=["atua"], acoes=["atua.frota.resultado_veiculo"],
+    ferramentas=["atua"],
+    acoes=["atua.frota.resultado_veiculo",
+           "atua.contraprova.margem_frota_propria"],
     entradas={"dias": "int", "cd_pessoa_filial": "int", "limite": "int"},
     saidas={"tratores": "int", "tratores_receita": "num",
             "tratores_custo_identificavel": "num",
@@ -1109,6 +1412,7 @@ registrar(Definicao(
                "carta frete interna fora do resultado",
                "contribuição nunca apresentada como lucro"],
     executor=exec_frota_resultado,
+    auditor=aud_margem_frota_propria,
 ))
 
 registrar(Definicao(
@@ -1116,7 +1420,8 @@ registrar(Definicao(
     area="Fiscal & Contábil",
     promessa="CT-e e MDF-e sem pendência com o fisco.", versao=1,
     competencias=["situacao-sefaz", "cte-nao-transmitido", "rejeicao-sefaz"],
-    ferramentas=["atua"], acoes=["atua.fiscal.cte_pendente"],
+    ferramentas=["atua"], acoes=["atua.fiscal.cte_pendente",
+           "atua.contraprova.cte_sem_titulo_situacao"],
     entradas={"dias": "int", "cd_pessoa_filial": "int", "limite": "int"},
     saidas={"documentos_na_janela": "int", "por_situacao": "dict",
             "pendentes_abertos": "int", "valor_pendentes": "num",
@@ -1126,6 +1431,7 @@ registrar(Definicao(
                "cancelado fora da lista de pendência",
                "nota fiscal modelo 55 fora da cobrança de CT-e"],
     executor=exec_fiscal_cte_pendente,
+    auditor=aud_cte_sem_titulo,
 ))
 
 # Declarados, sem ferramenta ligada. Aparecem na interface com a limitação
@@ -1154,3 +1460,14 @@ for _id, _nome, _papel, _area, _prom, _fer in [
         limites={"tempo_s": 120, "custo_centavos": 0}, criterios=[],
         executor=None,
     ))
+
+# Lívia é o primeiro agente que existe só para contestar. Ela não abre missão
+# própria: entra quando outro agente já entregou um número, e confere esse
+# número por um caminho diferente do banco. Aparece na interface como
+# "revisor", não como "sem integração" — porque ela opera de verdade.
+_livia = obter("auditoria.interna")
+_livia.competencias = ["contraprova-de-duplicidade", "conferencia-por-documento"]
+_livia.acoes = ["atua.contraprova.duplicidade_documento"]
+_livia.criterios = ["nunca repete a consulta do agente auditado",
+                    "toda contestação nomeia o caminho alternativo usado"]
+_livia.auditor = aud_duplicidade_documento

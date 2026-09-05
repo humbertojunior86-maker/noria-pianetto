@@ -48,9 +48,22 @@ def transacao():
         raise
 
 
+# Colunas acrescentadas depois que o esquema já rodava em produção.
+# CREATE TABLE IF NOT EXISTS não altera tabela que já existe, então coluna
+# nova precisa entrar aqui ALÉM de entrar no esquema.sql.
+_COLUNAS_NOVAS: list[tuple[str, str, str]] = [
+    ("criterio", "tarefa_chave", "TEXT"),
+]
+
+
 def migrar() -> None:
     c = conexao()
     c.executescript(ESQUEMA.read_text(encoding="utf-8"))
+    for tabela, coluna, tipo in _COLUNAS_NOVAS:
+        tem = any(r["name"] == coluna
+                  for r in c.execute(f"PRAGMA table_info({tabela})"))
+        if not tem:
+            c.execute(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo}")
 
 
 # --------------------------------------------------------------------- helpers

@@ -125,6 +125,9 @@ const NATUREZA = {
   hipotese: ['Hipótese', 'atencao'],
   contradicao: ['Contradição', 'erro'],
   ausencia: ['Ausência', 'atencao'],
+  // Dois caminhos do banco discordaram sobre o mesmo fato. Não é erro do
+  // sistema: é o momento em que ele para e chama gente.
+  contestada: ['Contestada', 'erro'],
 };
 
 const CAMADA = {
