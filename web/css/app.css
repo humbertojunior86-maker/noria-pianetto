@@ -2202,6 +2202,12 @@ body.modo-saguao {
   font-size: var(--t-micro);
   color: var(--tinta-3);
 }
+.ceo-placa-diesel {
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  color: var(--acento);
+}
 .ceo-sintomas, .ceo-medidas { margin: var(--e-2) 0 0; padding-left: var(--e-3); }
 .ceo-sintomas li {
   font-size: var(--t-mini);
@@ -2237,3 +2243,8 @@ body.modo-saguao {
   font-size: var(--t-mini);
   color: var(--tinta-4);
 }
+
+/* Receita de placa própria que o documento classificou como agregado: fica
+   marcada na coluna para o CEO nunca ler o total sem lembrar do ajuste. */
+.ceo-veiculos td.num.reclass { color: var(--atencao); }
+.ceo-veiculos td.num.reclass::after { content: ' *'; }

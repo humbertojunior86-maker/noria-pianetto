@@ -412,6 +412,21 @@ WITH frota AS (
      AND c.cd_veiculo IS NOT NULL
      AND (%(cd_pessoa_filial)s IS NULL OR c.cd_pessoa_filial = %(cd_pessoa_filial)s)
    GROUP BY 1
+), agr AS (
+  -- A MESMA placa emitindo conhecimento fora da frota propria (agregado = 2,
+  -- terceiro = 3). Enquanto isso existe, o veiculo tem custo na frota e
+  -- receita fora dela: o resultado da frota fica errado nos dois lados.
+  SELECT c.cd_veiculo,
+         count(*) AS qt_ctes_agregado,
+         sum(c.vl_total) AS vl_receita_agregado,
+         sum(COALESCE(c.vl_km_rodado, 0)) AS vl_km_agregado,
+         string_agg(DISTINCT c.id_proprietario_veiculo::text, ',') AS ds_proprietarios_outros
+    FROM ctrc c
+   WHERE c.dt_cancelamento IS NULL
+     AND c.dt_emissao >= CURRENT_DATE - %(dias)s
+     AND c.id_proprietario_veiculo <> 1
+     AND c.cd_veiculo IS NOT NULL
+   GROUP BY 1
 ), cx AS (
   SELECT cv.cd_veiculo,
          sum(k.vl_lancamento) AS vl_caixa_total,
@@ -443,15 +458,92 @@ SELECT f.cd_veiculo, f.ds_placa, f.nr_frota, f.ds_modelo, f.nm_tipo_veiculo, f.i
        COALESCE(r.vl_peso, 0) AS vl_peso,
        COALESCE(r.vl_km, 0)   AS vl_km,
        r.dt_ultimo_cte, r.cd_pessoa_filial,
-       COALESCE(cx.qt_lancamentos, 0) AS qt_lancamentos_caixa
+       COALESCE(cx.qt_lancamentos, 0) AS qt_lancamentos_caixa,
+       COALESCE(a.qt_ctes_agregado, 0)    AS qt_ctes_agregado,
+       COALESCE(a.vl_receita_agregado, 0) AS vl_receita_agregado,
+       COALESCE(a.vl_km_agregado, 0)      AS vl_km_agregado,
+       a.ds_proprietarios_outros
   FROM frota f
   LEFT JOIN rec r ON r.cd_veiculo = f.cd_veiculo
   LEFT JOIN cx    ON cx.cd_veiculo = f.cd_veiculo
+  LEFT JOIN agr a ON a.cd_veiculo = f.cd_veiculo
  WHERE COALESCE(r.qt_ctes, 0) > 0 OR COALESCE(cx.qt_lancamentos, 0) > 0
  ORDER BY (COALESCE(r.vl_receita, 0) - COALESCE(cx.vl_caixa_total, 0)) ASC
  LIMIT %(limite)s""",
         ["dias", "cd_pessoa_filial", "limite"], False,
         "receita e custo identificavel por placa da frota propria no periodo"),
+
+    "frota.abastecimento_veiculo": (
+        """\
+-- frota.abastecimento_veiculo
+-- O diesel por dentro. O resultado por placa so enxerga o VALOR do combustivel
+-- (historico_caixa LIKE '%%COMBUST%%'). Aqui a mesma despesa e aberta em
+-- litro, preco do litro e leitura de painel, usando o item da despesa
+-- (caixa_produto, cd_produto = 6 DIESEL) amarrado ao veiculo por caixa_veiculo.
+-- Com isso da para separar duas coisas que o valor sozinho mistura:
+--   . abastecer CARO   -> preco medio do litro acima do resto da frota
+--   . abastecer DEMAIS -> litro por quilometro rodado acima do resto da frota
+-- Limites honestos: o km vem da diferenca entre a primeira e a ultima leitura
+-- do periodo, entao ignora o que o veiculo rodou antes do primeiro
+-- abastecimento; troca de painel derruba a conta e aparece como km_l absurdo.
+-- qt_abast_acima_tanque conta o abastecimento cuja litragem passou da
+-- capacidade cadastrada do tanque: ou o cadastro esta errado, ou o bico
+-- encheu mais de um tanque.
+WITH frota AS (
+  SELECT v.cd_veiculo, btrim(v.ds_placa) AS ds_placa,
+         vp.nr_frota, vp.qt_litros_tanque,
+         (tv.nm_tipo_veiculo ILIKE 'CAVALO%%' OR tv.nm_tipo_veiculo ILIKE '%%TRATOR%%') AS id_tracao
+    FROM veiculo_proprio vp
+    JOIN veiculo v ON v.cd_veiculo = vp.cd_veiculo
+    LEFT JOIN tipo_veiculo tv ON tv.cd_tipo_veiculo = v.cd_tipo_veiculo
+   WHERE vp.dt_baixa IS NULL
+), item AS (
+  SELECT cv.cd_veiculo, cx.cd_caixa, k.dt_documento,
+         cp.qt_produto, cp.vl_total, cv.vl_medidor
+    FROM caixa_produto cp
+    JOIN caixa cx ON cx.cd_caixa = cp.cd_caixa
+    JOIN caixa k  ON k.cd_caixa = cx.cd_caixa
+    JOIN caixa_veiculo cv ON cv.cd_caixa = cx.cd_caixa
+   WHERE cp.cd_produto = 6
+     AND cp.qt_produto > 0
+     AND k.dt_documento BETWEEN CURRENT_DATE - %(dias)s AND CURRENT_DATE
+), ab AS (
+  SELECT i.cd_veiculo,
+         count(DISTINCT i.cd_caixa) AS qt_abastecimentos,
+         sum(i.qt_produto)          AS qt_litros,
+         sum(i.vl_total)            AS vl_diesel,
+         min(NULLIF(i.vl_medidor, 0)) AS vl_hodometro_min,
+         max(NULLIF(i.vl_medidor, 0)) AS vl_hodometro_max,
+         count(*) FILTER (WHERE COALESCE(i.vl_medidor, 0) = 0) AS qt_sem_hodometro,
+         max(i.dt_documento) AS dt_ultimo_abastecimento
+    FROM item i
+   GROUP BY 1
+), estouro AS (
+  SELECT i.cd_veiculo, count(*) AS qt_abast_acima_tanque
+    FROM item i
+    JOIN frota f ON f.cd_veiculo = i.cd_veiculo
+   WHERE COALESCE(f.qt_litros_tanque, 0) > 0
+     AND i.qt_produto > f.qt_litros_tanque
+   GROUP BY 1
+)
+SELECT f.cd_veiculo, f.ds_placa, f.nr_frota, f.id_tracao,
+       COALESCE(f.qt_litros_tanque, 0) AS qt_litros_tanque,
+       ab.qt_abastecimentos, ab.qt_litros, ab.vl_diesel,
+       round(ab.vl_diesel / NULLIF(ab.qt_litros, 0), 3) AS vl_preco_litro,
+       ab.vl_hodometro_min, ab.vl_hodometro_max,
+       (ab.vl_hodometro_max - ab.vl_hodometro_min) AS vl_km_hodometro,
+       round((ab.vl_hodometro_max - ab.vl_hodometro_min)
+             / NULLIF(ab.qt_litros, 0), 2) AS vl_km_por_litro,
+       ab.qt_sem_hodometro,
+       COALESCE(e.qt_abast_acima_tanque, 0) AS qt_abast_acima_tanque,
+       ab.dt_ultimo_abastecimento
+  FROM frota f
+  JOIN ab ON ab.cd_veiculo = f.cd_veiculo
+  LEFT JOIN estouro e ON e.cd_veiculo = f.cd_veiculo
+ ORDER BY ab.vl_diesel DESC
+ LIMIT %(limite)s""",
+        ["dias", "limite"], False,
+        "litro, preco do litro e km por litro por placa da frota propria"),
 
     "contraprova.km_por_hodometro": (
         """\
@@ -1108,6 +1200,7 @@ PADROES: dict[str, dict] = {
                                      "cd_pessoa_filial": None, "limite": 100},
     "frota.resultado_veiculo": {"dias": 90, "cd_pessoa_filial": None,
                                 "limite": 100},
+    "frota.abastecimento_veiculo": {"dias": 90, "limite": 200},
     "fiscal.cte_pendente": {"dias": 90, "cd_pessoa_filial": None, "limite": 200},
     "lucratividade.por_setor": {"dias": 90, "cd_pessoa_filial": None},
     "lucratividade.por_agencia": {"dias": 90, "cd_pessoa_filial": None,

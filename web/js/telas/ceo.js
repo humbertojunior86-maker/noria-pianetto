@@ -567,6 +567,12 @@ function planoFrota(d) {
       'se cada placa fora da curva voltar para a mediana da casa'),
     numero('Encher a agenda das paradas', f.dinheiro(N(dd.ganho_giro_total) || 0),
       'estimativa mais frágil: depende de haver carga na praça'),
+    N(dd.litros_periodo) ? numero('Diesel da frota',
+      f.dinheiro(N(dd.diesel_periodo) || 0),
+      `${f.numero(N(dd.litros_periodo))} litros · mediana ${f.dinheiro(N(dd.mediana_preco_litro) || 0)} o litro`) : null,
+    N(dd.mediana_km_por_litro) ? numero('Consumo da casa',
+      `${f.numero(N(dd.mediana_km_por_litro), 2)} km/l`,
+      `mediana de ${f.numero(N(dd.placas_com_km_litro) || 0)} placas com painel lido em todo abastecimento`) : null,
   ]);
 
   const medida = (m) => el('li', null, [
@@ -592,6 +598,18 @@ function planoFrota(d) {
     el('div.ceo-placa-nums', {
       texto: `${f.numero(N(l.ctes) || 0)} CT-e · ${f.numero(N(l.km) || 0)} km · ${f.numero(N(l.km_dia) || 0, 1)} km/dia · receita ${f.numero(N(l.receita_por_km) || 0, 2)}/km · combustível ${f.numero(N(l.combustivel_por_km) || 0, 2)}/km`,
     }),
+    /* O diesel aberto: litro comprado, preço pago e quilômetro por litro medido
+       no painel. Placa sem painel lido em todo abastecimento não recebe km/l
+       inventado — recebe o motivo escrito. */
+    N(l.litros) ? el('div.ceo-placa-diesel', {
+      texto: `${f.numero(N(l.litros))} litros · ${f.dinheiro(N(l.preco_litro) || 0)} o litro · ${
+        N(l.km_por_litro)
+          ? `${f.numero(N(l.km_por_litro), 2)} km por litro`
+          : (N(l.abast_sem_hodometro)
+            ? `sem km/l: ${f.numero(N(l.abast_sem_hodometro))} de ${f.numero(N(l.abastecimentos) || 0)} abastecimentos sem hodômetro`
+            : 'sem km/l: leitura de painel fora da faixa aferível')
+      }`,
+    }) : null,
     el('ul.ceo-sintomas', null,
       (l.sintomas || []).map((t) => el('li', { texto: t }))),
     el('ul.ceo-medidas', null, (l.medidas || []).map(medida)),
@@ -619,6 +637,13 @@ function planoFrota(d) {
   }
 
   corpo.push(el('div.ceo-placas', null, linhas.map(cartao)));
+
+  const semMedida = dd.vermelho_sem_apontamento || [];
+  if (semMedida.length) {
+    corpo.push(el('p.ceo-plano-limpas', {
+      texto: `No vermelho sem apontamento: ${semMedida.join(', ')}. Estas placas fecharam com custo acima da receita, mas estão dentro da mediana da casa em giro, preço e consumo — o prejuízo delas não tem causa isolada nesta janela, e por isso entram na conta do vermelho sem medida atribuída.`,
+    }));
+  }
 
   const limpas = dd.veiculos_sem_apontamento || [];
   if (limpas.length) {
@@ -654,32 +679,52 @@ function veiculos(d, dias) {
     });
   }
 
+  /* Frota própria é o que o cadastro diz que é próprio. Placa da casa que
+     emitiu conhecimento como agregado ou terceiro tem essa receita contada
+     aqui: o custo dela já está inteiro nesta tabela, e metade da conta não é
+     resultado. A parcela reclassificada aparece no rótulo, nunca diluída. */
   const puxa = [];
   const apoio = [];
-  q.linhas.forEach((l) => ((N(l.qt_ctes) || 0) > 0 ? puxa : apoio).push(l));
-  puxa.sort((x, y) => (N(y.vl_contribuicao) || 0) - (N(x.vl_contribuicao) || 0));
+  q.linhas.forEach((l) => {
+    l._ctesAgr = N(l.qt_ctes_agregado) || 0;
+    l._recAgr = N(l.vl_receita_agregado) || 0;
+    l._ctes = (N(l.qt_ctes) || 0) + l._ctesAgr;
+    l._rec = (N(l.vl_receita) || 0) + l._recAgr;
+    l._con = l._rec - (N(l.vl_custo_identificavel) || 0);
+    l._pr = l._rec ? (l._con / l._rec) * 100 : null;
+    (l._ctes > 0 ? puxa : apoio).push(l);
+  });
+  puxa.sort((x, y) => y._con - x._con);
   apoio.sort((x, y) => (N(y.vl_custo_identificavel) || 0) - (N(x.vl_custo_identificavel) || 0));
 
-  const recPuxa = puxa.reduce((t, l) => t + (N(l.vl_receita) || 0), 0);
+  const recPuxa = puxa.reduce((t, l) => t + l._rec, 0);
   const cusPuxa = puxa.reduce((t, l) => t + (N(l.vl_custo_identificavel) || 0), 0);
   const cusApoio = apoio.reduce((t, l) => t + (N(l.vl_custo_identificavel) || 0), 0);
-  const negativos = puxa.filter((l) => (N(l.vl_contribuicao) || 0) < 0);
+  const negativos = puxa.filter((l) => l._con < 0);
   const cusTotal = cusPuxa + cusApoio;
   const combTotal = q.linhas.reduce((t, l) => t + (N(l.vl_combustivel) || 0), 0);
   const manutTotal = q.linhas.reduce((t, l) => t + (N(l.vl_manutencao) || 0), 0);
-  const perdaNeg = negativos.reduce((t, l) => t + (N(l.vl_contribuicao) || 0), 0);
+  const perdaNeg = negativos.reduce((t, l) => t + l._con, 0);
+  const mistas = puxa.filter((l) => l._ctesAgr > 0);
+  const recMista = mistas.reduce((t, l) => t + l._recAgr, 0);
 
   const linha = (l) => {
-    const con = N(l.vl_contribuicao);
-    const pr = N(l.pr_contribuicao);
+    const con = l._con;
+    const pr = l._pr;
     const tom = con < 0 ? 'erro' : pr !== null && pr < 10 ? 'atencao' : '';
     return el(`tr${tom ? `.${tom}` : ''}`, null, [
       el('td.nome', null, [
         el('span', { texto: l.ds_placa || f.NADA }),
         el('span.ceo-modelo', { texto: `${l.nr_frota ? `frota ${l.nr_frota} · ` : ''}${l.ds_modelo || l.nm_tipo_veiculo || ''}` }),
       ]),
-      el('td.num', { texto: f.numero(N(l.qt_ctes) || 0) }),
-      el('td.num', { texto: abreviar(N(l.vl_receita)), title: f.dinheiro(N(l.vl_receita)) }),
+      el('td.num', {
+        texto: f.numero(l._ctes),
+        title: l._ctesAgr ? `${f.numero(N(l.qt_ctes) || 0)} como frota própria e ${f.numero(l._ctesAgr)} emitidos como agregado ou terceiro na mesma placa` : '',
+      }),
+      el(`td.num${l._ctesAgr ? '.reclass' : ''}`, {
+        texto: abreviar(l._rec),
+        title: l._ctesAgr ? `${f.dinheiro(l._rec)}, dos quais ${f.dinheiro(l._recAgr)} vieram de CT-e classificado como agregado ou terceiro nesta placa própria` : f.dinheiro(l._rec),
+      }),
       el('td.num', { texto: abreviar(N(l.vl_combustivel)), title: `combustível: ${f.dinheiro(N(l.vl_combustivel))}` }),
       el('td.num', { texto: abreviar(N(l.vl_manutencao)), title: `manutenção, peça, pneu e borracharia lançados nesta placa: ${f.dinheiro(N(l.vl_manutencao))}` }),
       el('td.num', { texto: abreviar(outros(l)), title: `pedágio, pessoal, lavagem, estacionamento e demais lançamentos: ${f.dinheiro(outros(l))}` }),
@@ -714,6 +759,9 @@ function veiculos(d, dias) {
     el('p.ceo-linha-topo', {
       texto: `${f.numero(puxa.length)} veículo(s) puxam receita: ${f.dinheiro(recPuxa)} contra ${f.dinheiro(cusPuxa)} de despesa lançada na placa, sobra de ${f.dinheiro(recPuxa - cusPuxa)}. Outros ${f.numero(apoio.length)} — carreta, dolly, carro, moto — somam ${f.dinheiro(cusApoio)} de despesa sem receita própria.`,
     }),
+    mistas.length ? el('p.ceo-contra-nota', {
+      texto: `${f.numero(mistas.length)} placa(s) do cadastro próprio emitiram conhecimento como agregado ou terceiro no período — ${mistas.map((l) => l.ds_placa).join(', ')}, ${f.dinheiro(recMista)}. Como o cavalo é da casa e a despesa dele está inteira nesta tabela, essa receita está contada aqui e sai do agenciamento na mesma medida. A classificação do documento continua a corrigir.`,
+    }) : null,
     paradosTracao.length ? el('p.ceo-contra-nota.erro', {
       texto: `${f.numero(paradosTracao.length)} veículo(s) de tração gastaram ${f.dinheiro(custoParado)} sem emitir um único CT-e em ${dias} dias: ${paradosTracao.map((l) => l.ds_placa).join(', ')}. Cavalo existe para puxar carga — parado, é só custo.`,
     }) : null,
