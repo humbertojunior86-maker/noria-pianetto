@@ -214,6 +214,25 @@ let atual = null;
  * @param {Function} aoTerminar chamado uma vez, ao fim da sequência
  * @returns {{pular:Function, destruir:Function}}
  */
+/* Decide se a abertura já começa aliviada: respeita ?leve=1 / ?leve=0 na
+   barra de endereço, depois a lembrança da última vez naquela máquina,
+   depois um palpite pelo número de núcleos. */
+function pesoInicial() {
+  try {
+    const q = new URLSearchParams(location.search).get('leve');
+    if (q === '1') return true;
+    if (q === '0') return false;
+    const g = localStorage.getItem('noria.leve');
+    if (g === '1') return true;
+    if (g === '0') return false;
+  } catch (e) { /* sem acesso ao armazenamento: segue no palpite */ }
+  return (navigator.hardwareConcurrency || 4) <= 2;
+}
+
+function lembrarPeso(v) {
+  try { localStorage.setItem('noria.leve', v ? '1' : '0'); } catch (e) { /* ok */ }
+}
+
 export function abertura(el, aoTerminar) {
   if (atual) atual.destruir();
 
@@ -275,27 +294,77 @@ export function abertura(el, aoTerminar) {
     }
   } catch { /* storage bloqueado */ }
 
+  /* Peso do desenho. Numa parede modesta o quadro cheio derrubava a
+     animação para 5 quadros por segundo — bonito parado, travado em
+     movimento. Aqui ele mede a si mesmo nos primeiros instantes e, se não
+     estiver dando conta, alivia sozinho. A escolha fica guardada para as
+     próximas aberturas daquela máquina. */
+  let leve = pesoInicial();
+  let dpr = Math.min(window.devicePixelRatio || 1, leve ? 1 : 1.5);
+  /* Fator de resolução do desenho. O gargalo medido não é conta, é pintura:
+     numa tela de parede sem placa de vídeo decente, encher 1920x1080 a cada
+     quadro já consome o orçamento inteiro. Aqui o cérebro é desenhado numa
+     grade menor e esticado pelo próprio navegador — na parede, a poucos
+     metros, a diferença não se vê; a fluidez, sim. */
+  let fPix = leve ? 0.7 : 1;
+  el.dataset.peso = leve ? 'leve' : 'cheio';   // visível na inspeção da tela
+
   /* ----- Poeira de fundo: dá profundidade numa tela grande -------------- */
   const poeira = (() => {
     let sp = 991;
     const rnd = () => (sp = (sp * 16807) % 2147483647) / 2147483647;
-    return Array.from({ length: 170 }, () => ({
+    return Array.from({ length: leve ? 55 : 170 }, () => ({
       x: rnd(), y: rnd(), z: 0.25 + rnd() * 0.75, f: rnd() * 6.2832
     }));
   })();
 
   /* ----- Malha ---------------------------------------------------------- */
-  const pts = nuvemCerebro(1200);
+  const N_BASE = 1200;
+  const pts = nuvemCerebro(N_BASE);
   const arestas = sinapses(pts, 3);
+  // Metade dos nós, mais o tronco inteiro: no modo leve a silhueta continua
+  // sendo um encéfalo, só com menos fios.
+  const ativoLeve = pts.map((_, i) => i % 2 === 0 || i >= N_BASE);
+  const arestasLeve = arestas.filter((e) => ativoLeve[e[0]] && ativoLeve[e[1]]);
 
   /* ----- Estado --------------------------------------------------------- */
   let w = 0, h = 0, compacto = false, esc = 1;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const ctx = tela.getContext('2d');
   const t0 = performance.now();
   let raf = 0;
   let encerrado = false;
   let escritas = 0;         // linhas de log já emitidas
+  let halo = null, haloChave = '';
+  let vinheta = null, vinhetaChave = '';
+  let brilho = null;        // selo de brilho pré-desenhado, no lugar do borrão
+  let brilhoCor = '';
+  let ultimoQuadro = 0;     // instante do último desenho, para segurar a taxa
+  const amostras = [];      // duração dos primeiros quadros, para pesar a máquina
+  let pesado = false;       // já decidiu o peso nesta execução
+  const NIVEIS = 5;         // faixas de opacidade em que os fios são agrupados
+  const cestos = [];        // 2 cores x NIVEIS faixas, reaproveitados a cada quadro
+  for (let i = 0; i < NIVEIS * 2; i++) cestos.push([]);
+  const cestosNo = [];
+  for (let i = 0; i < NIVEIS; i++) cestosNo.push([]);
+
+  /* O brilho dos nós quentes saía de shadowBlur, que o navegador refaz do
+     zero a cada círculo. Desenhado uma vez num selo e carimbado depois,
+     custa uma fração disso. */
+  function selo(cor) {
+    if (brilho && brilhoCor === cor) return brilho;
+    const r = Math.max(8, Math.round(11 * esc));
+    const c = document.createElement('canvas');
+    c.width = c.height = r * 2;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(r, r, 0, r, r, r);
+    grad.addColorStop(0, rgba(cor, 0.95));
+    grad.addColorStop(0.35, rgba(cor, 0.28));
+    grad.addColorStop(1, rgba(cor, 0));
+    g.fillStyle = grad;
+    g.fillRect(0, 0, r * 2, r * 2);
+    brilho = c; brilhoCor = cor;
+    return c;
+  }
   const roteiro = [];       // preenchido abaixo (depende de `agentes`)
 
   function medir() {
@@ -305,11 +374,13 @@ export function abertura(el, aoTerminar) {
     // Numa tela de parede o público está longe: tudo cresce com a largura.
     esc = clamp(w / 1440, 0.86, 2.1);
     el.style.setProperty('--esc-ab', esc.toFixed(3));
-    tela.width = Math.round(w * dpr);
-    tela.height = Math.round(h * dpr);
+    const k = dpr * fPix;
+    tela.width = Math.max(1, Math.round(w * k));
+    tela.height = Math.max(1, Math.round(h * k));
     tela.style.width = `${w}px`;
     tela.style.height = `${h}px`;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    brilho = null; halo = null; haloChave = ''; vinheta = null; vinhetaChave = '';
   }
   medir();
   const ro = new ResizeObserver(medir);
@@ -426,6 +497,30 @@ export function abertura(el, aoTerminar) {
   function quadro(agora) {
     const t = agora - t0;
 
+    // Segura em ~32 quadros por segundo no modo leve: a animação é toda
+    // baseada no relógio, então pular quadros não altera a coreografia.
+    if (leve && agora - ultimoQuadro < 30) { raf = requestAnimationFrame(quadro); return; }
+    // O primeiro segundo e meio não conta: ali ainda há carga de fontes e
+    // de rede, e puniria a máquina por algo que não é o desenho.
+    if (ultimoQuadro && t > 1500) amostras.push(agora - ultimoQuadro);
+    ultimoQuadro = agora;
+
+    /* Governo do desempenho. A cada punhado de quadros olha a mediana: se
+       está engasgando, alivia mais um degrau e redesenha menor. Nunca sobe
+       de volta, para não ficar oscilando na frente de quem assiste. */
+    if (amostras.length >= 30) {
+      const ord = amostras.slice().sort((a, b) => a - b);
+      const meio = ord[Math.floor(ord.length / 2)];
+      amostras.length = 0;
+      if (meio > 30 && fPix > 0.45) {
+        if (!leve) { leve = true; dpr = Math.min(dpr, 1); el.dataset.peso = 'leve'; }
+        fPix = Math.max(0.45, fPix * 0.84);
+        el.dataset.pixel = fPix.toFixed(2);
+        medir();
+      }
+      if (!pesado) { pesado = true; lembrarPeso(leve); }
+    }
+
     // log
     while (escritas < roteiro.length && roteiro[escritas].t <= t) {
       emitir(roteiro[escritas]);
@@ -464,10 +559,12 @@ export function abertura(el, aoTerminar) {
     const clarao = dtRev >= 0 && dtRev < 620 ? 1 - dtRev / 620 : 0;
 
     // projeção
+    const ativos = leve ? ativoLeve : null;
     const proj = new Array(pts.length);
     const cosY = Math.cos(gy), sinY = Math.sin(gy);
     const cosX = Math.cos(gx), sinX = Math.sin(gx);
     for (let i = 0; i < pts.length; i++) {
+      if (ativos && !ativos[i]) { proj[i] = null; continue; }
       const p = pts[i];
       let x = p.x * cosY - p.z * sinY;
       let z = p.x * sinY + p.z * cosY;
@@ -485,48 +582,99 @@ export function abertura(el, aoTerminar) {
     }
 
     // poeira: anda devagar e acompanha a câmera, criando paralaxe
+    ctx.fillStyle = rgba(cCromo, 0.11 * forca);
+    ctx.beginPath();
     for (let i = 0; i < poeira.length; i++) {
       const d = poeira[i];
       const px = ((d.x + t * 0.0000075 * d.z) % 1) * w;
       const py = ((d.y + Math.sin(d.f + t * 0.0002) * 0.004 + 1) % 1) * h;
       const dx = (px - cx) * (camera - 1) * 0.5;
       const dy = (py - cy) * (camera - 1) * 0.5;
-      ctx.fillStyle = rgba(cCromo, 0.06 + d.z * 0.1 * forca);
-      ctx.beginPath();
-      ctx.arc(px + dx, py + dy, d.z * 1.3 * esc, 0, 6.2832);
-      ctx.fill();
+      const r = d.z * 1.3 * esc;
+      ctx.moveTo(px + dx + r, py + dy);
+      ctx.arc(px + dx, py + dy, r, 0, 6.2832);
     }
+    ctx.fill();
 
     // halo
-    const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.9);
-    halo.addColorStop(0, rgba(cAcento, claro ? 0.05 : 0.075));
-    halo.addColorStop(0.45, rgba(cCromo, claro ? 0.02 : 0.03));
-    halo.addColorStop(1, rgba(cCromo, 0));
+    // O halo só muda quando o raio muda de verdade; refazer o gradiente a
+    // cada quadro era desperdício puro.
+    const chaveHalo = `${Math.round(cx)}|${Math.round(cy)}|${Math.round(R / 4)}|${claro}`;
+    if (chaveHalo !== haloChave) {
+      halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.9);
+      halo.addColorStop(0, rgba(cAcento, claro ? 0.05 : 0.075));
+      halo.addColorStop(0.45, rgba(cCromo, claro ? 0.02 : 0.03));
+      halo.addColorStop(1, rgba(cCromo, 0));
+      haloChave = chaveHalo;
+    }
     ctx.fillStyle = halo;
     ctx.fillRect(cx - R * 2, cy - R * 2, R * 4, R * 4);
 
-    // sinapses
-    ctx.lineWidth = 0.65;
-    for (let e = 0; e < arestas.length; e++) {
-      const a = proj[arestas[e][0]], b = proj[arestas[e][1]];
-      if (!a.on || !b.on) continue;
+    /* Sinapses e nós em lote. Antes cada fio virava um traço próprio —
+       milhares de chamadas por quadro. Agora a opacidade é arredondada em
+       cinco faixas e cada faixa vira um traço só. */
+    const fios = leve ? arestasLeve : arestas;
+    for (let i = 0; i < cestos.length; i++) cestos[i].length = 0;
+    for (let e = 0; e < fios.length; e++) {
+      const a = proj[fios[e][0]], b = proj[fios[e][1]];
+      if (!a || !b || !a.on || !b.on) continue;
       const prof = (a.z + b.z) / 2;
-      const al = (0.16 + 0.36 * (1 - (prof + 1) / 2)) * (0.55 + 0.45 * a.puls) * forca;
-      ctx.strokeStyle = rgba(e % 9 === 0 ? cAcento : cCromo, clamp(al, 0, 1));
-      ctx.beginPath(); ctx.moveTo(a.X, a.Y); ctx.lineTo(b.X, b.Y); ctx.stroke();
+      const al = clamp((0.16 + 0.36 * (1 - (prof + 1) / 2)) * (0.55 + 0.45 * a.puls) * forca, 0, 1);
+      const n = Math.min(NIVEIS - 1, Math.floor(al * NIVEIS));
+      const c = cestos[(e % 9 === 0 ? NIVEIS : 0) + n];
+      c.push(a.X, a.Y, b.X, b.Y);
+    }
+    ctx.lineWidth = 0.65;
+    for (let k = 0; k < cestos.length; k++) {
+      const c = cestos[k];
+      if (!c.length) continue;
+      ctx.strokeStyle = rgba(k >= NIVEIS ? cAcento : cCromo,
+        ((k % NIVEIS) + 0.5) / NIVEIS);
+      ctx.beginPath();
+      for (let j = 0; j < c.length; j += 4) {
+        ctx.moveTo(c[j], c[j + 1]); ctx.lineTo(c[j + 2], c[j + 3]);
+      }
+      ctx.stroke();
     }
 
-    // nós
+    for (let i = 0; i < cestosNo.length; i++) cestosNo[i].length = 0;
+    const carimbo = selo(cAcento);
+    const meioSelo = carimbo.width / 2;
     for (let i = 0; i < proj.length; i++) {
       const p = proj[i];
-      if (!p.on) continue;
+      if (!p || !p.on) continue;
       const quente = i % 23 === 0;
       const raio = (quente ? 1.9 : 1.05) * esc * p.persp * (0.7 + 0.5 * p.puls);
-      const al = (quente ? 0.95 : 0.6) * (0.5 + 0.5 * (1 - (p.z + 1) / 2)) * forca;
-      if (quente) { ctx.shadowColor = rgba(cAcento, 0.9); ctx.shadowBlur = 10 * esc; }
-      ctx.fillStyle = rgba(quente ? cAcento : cCromo, clamp(al, 0, 1));
-      ctx.beginPath(); ctx.arc(p.X, p.Y, raio, 0, 6.2832); ctx.fill();
-      if (quente) ctx.shadowBlur = 0;
+      const al = clamp((quente ? 0.95 : 0.6) * (0.5 + 0.5 * (1 - (p.z + 1) / 2)) * forca, 0, 1);
+      if (quente) {
+        const g = (0.5 + 0.5 * p.puls) * (leve ? 1.5 : 2.1) * esc * p.persp;
+        ctx.globalAlpha = al;
+        ctx.drawImage(carimbo, p.X - meioSelo * g, p.Y - meioSelo * g,
+          carimbo.width * g, carimbo.height * g);
+        ctx.globalAlpha = 1;
+      }
+      const n = Math.min(NIVEIS - 1, Math.floor(al * NIVEIS));
+      cestosNo[n].push(p.X, p.Y, raio, quente ? 1 : 0);
+    }
+    for (let k = 0; k < NIVEIS; k++) {
+      const c = cestosNo[k];
+      if (!c.length) continue;
+      ctx.fillStyle = rgba(cCromo, (k + 0.5) / NIVEIS);
+      ctx.beginPath();
+      for (let j = 0; j < c.length; j += 4) {
+        if (c[j + 3]) continue;
+        ctx.moveTo(c[j] + c[j + 2], c[j + 1]);
+        ctx.arc(c[j], c[j + 1], c[j + 2], 0, 6.2832);
+      }
+      ctx.fill();
+      ctx.fillStyle = rgba(cAcento, (k + 0.5) / NIVEIS);
+      ctx.beginPath();
+      for (let j = 0; j < c.length; j += 4) {
+        if (!c[j + 3]) continue;
+        ctx.moveTo(c[j] + c[j + 2], c[j + 1]);
+        ctx.arc(c[j], c[j + 1], c[j + 2], 0, 6.2832);
+      }
+      ctx.fill();
     }
 
     // anéis e varredura do instrumento
@@ -542,14 +690,15 @@ export function abertura(el, aoTerminar) {
     });
     ctx.strokeStyle = rgba(cCromo, 0.16 * forca);
     ctx.lineWidth = 0.7;
-    for (let a = 0; a < 72; a++) {
-      const ang = (a / 72) * 6.2832;
+    const marcas = leve ? 36 : 72;
+    ctx.beginPath();
+    for (let a = 0; a < marcas; a++) {
+      const ang = (a / marcas) * 6.2832;
       const r1 = R * 1.9, r2 = r1 + (a % 6 === 0 ? 7 : 3);
-      ctx.beginPath();
       ctx.moveTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
       ctx.lineTo(cx + Math.cos(ang) * r2, cy + Math.sin(ang) * r2);
-      ctx.stroke();
     }
+    ctx.stroke();
     // varredura contida no núcleo
     if (t < T_ATO4) {
       const vao = R * 2.1;
@@ -695,8 +844,7 @@ export function abertura(el, aoTerminar) {
       ctx.fillStyle = rgba(cor, 0.16 * k);
       ctx.beginPath(); ctx.arc(p.x, p.y, 8 * esc * k * pul, 0, 6.2832); ctx.fill();
       ctx.save();
-      ctx.shadowColor = rgba(cor, 0.85);
-      ctx.shadowBlur = 14 * esc;
+      if (!leve) { ctx.shadowColor = rgba(cor, 0.85); ctx.shadowBlur = 14 * esc; }
       ctx.fillStyle = rgba(cor, 0.95 * k);
       ctx.beginPath(); ctx.arc(p.x, p.y, 3.2 * esc * k, 0, 6.2832); ctx.fill();
       ctx.restore();
@@ -705,8 +853,7 @@ export function abertura(el, aoTerminar) {
       // arcos das áreas passam por cima e comeriam a legibilidade do nome.
       ctx.save();
       ctx.textAlign = p.direita ? 'left' : 'right';
-      ctx.shadowColor = rgba(T['--fundo'], 0.95);
-      ctx.shadowBlur = 8 * esc;
+      if (!leve) { ctx.shadowColor = rgba(T['--fundo'], 0.95); ctx.shadowBlur = 8 * esc; }
       const dx = (p.direita ? 12 : -12) * esc;
       ctx.fillStyle = rgba(T['--tinta-2'], 0.95 * k);
       ctx.fillText(p.ref.nome, p.x + dx, p.y - (compacto ? 0 : 5 * esc));
@@ -747,10 +894,15 @@ export function abertura(el, aoTerminar) {
     }
 
     // vinheta: puxa o olho para o centro numa tela grande
-    const vin = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.28, cx, cy, Math.hypot(w, h) * 0.62);
-    vin.addColorStop(0, rgba(T['--fundo'], 0));
-    vin.addColorStop(1, rgba(T['--fundo'], claro ? 0.28 : 0.62));
-    ctx.fillStyle = vin;
+    const chaveVin = `${Math.round(w)}|${Math.round(h)}|${claro}`;
+    if (chaveVin !== vinhetaChave) {
+      vinheta = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.28,
+        cx, cy, Math.hypot(w, h) * 0.62);
+      vinheta.addColorStop(0, rgba(T['--fundo'], 0));
+      vinheta.addColorStop(1, rgba(T['--fundo'], claro ? 0.28 : 0.62));
+      vinhetaChave = chaveVin;
+    }
+    ctx.fillStyle = vinheta;
     ctx.fillRect(0, 0, w, h);
 
     // esmaecimento final
