@@ -1,5 +1,6 @@
 import { runBoot, createBrain } from './boot.js';
 import { META, PULSO, ETAPAS, AGENTES, CASOS, CONCILIACAO, CONFRONTOS, ROTINAS, ENTREGAVEIS, FLUXO, INTEGRACOES } from './data.js';
+import { viewArquivos, ingerir, carregarExemplos, limpar, ligaArquivos, drawerArqDivergencia, ARQ } from './arquivos.js';
 
 /* ---------- helpers ---------- */
 const brl = (v, c = 0) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: c, maximumFractionDigits: c });
@@ -23,11 +24,13 @@ const ICON = {
   confronto: '<path d="M4 5h7v14H4z"/><path d="M13 5h7v14h-7z"/><path d="M11 12h2"/>',
   rotinas: '<path d="M9 11l2 2 4-4"/><rect x="3" y="4" width="18" height="16" rx="2"/>',
   integra: '<path d="M12 3v6m0 6v6M3 12h6m6 0h6"/><circle cx="12" cy="12" r="3"/>',
+  arquivo: '<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/><path d="M9 15l2.5-2.5L14 15"/><path d="M11.5 12.5V18"/>',
 };
 
 const VIEWS = [
   { id: 'ceo', nome: 'Sala do CEO', icon: 'ceo', tag: '4', crit: true, sub: 'Fila de decisões · atualizado agora' },
   { id: 'conciliacao', nome: 'Conciliação ATUA × Bancos', icon: 'conc', tag: 'piloto', sub: 'Base 04/09/2026 · amarração das 09:15' },
+  { id: 'arquivos', nome: 'Arquivos e OFX', icon: 'arquivo', tag: 'fase 1', sub: 'Leitura do extrato na origem · conciliação real' },
   { id: 'cadeia', nome: 'Cadeia de valor', icon: 'cadeia', tag: '18', sub: '18 etapas monitoradas ponta a ponta' },
   { id: 'agentes', nome: 'Agentes', icon: 'agentes', tag: '20', sub: '14 de área + 6 transversais' },
   { id: 'confrontos', nome: 'Matriz de confronto', icon: 'confronto', tag: '15', sub: 'Cruzamentos entre fontes independentes' },
@@ -315,7 +318,7 @@ function viewIntegracoes() {
   </div></section>`;
 }
 
-const RENDER = { ceo: viewCEO, conciliacao: viewConciliacao, cadeia: viewCadeia, agentes: viewAgentes, confrontos: viewConfrontos, rotinas: viewRotinas, integracoes: viewIntegracoes };
+const RENDER = { ceo: viewCEO, conciliacao: viewConciliacao, arquivos: viewArquivos, cadeia: viewCadeia, agentes: viewAgentes, confrontos: viewConfrontos, rotinas: viewRotinas, integracoes: viewIntegracoes };
 
 /* ---------- drawer ---------- */
 function openDrawer(html) {
@@ -449,6 +452,16 @@ function drawerAgente(id) {
     <button class="btn" data-act="Agente pausado até nova ordem">Pausar agente</button></footer>`);
 }
 
+/* ---------- ações da tela de arquivos ---------- */
+async function acaoArquivo(cmd) {
+  if (cmd === 'limpar') { limpar(); return toast('Arquivos descartados'); }
+  if (cmd === 'exemplo') {
+    toast('Lendo arquivos de exemplo…');
+    try { await carregarExemplos(); toast('Extrato e razão processados'); }
+    catch (e) { toast(`Falha ao carregar exemplos: ${e.message}`); }
+  }
+}
+
 /* ---------- navegação ---------- */
 let atual = 'ceo';
 function nav(id) {
@@ -463,7 +476,7 @@ function nav(id) {
 
 function montaNav() {
   $('#nav').innerHTML = `<p class="nav-label eyebrow">Núcleo</p>` +
-    VIEWS.map((v, i) => `${i === 2 ? '<p class="nav-label eyebrow">Empresa</p>' : ''}${i === 5 ? '<p class="nav-label eyebrow">Controle</p>' : ''}
+    VIEWS.map((v, i) => `${i === 3 ? '<p class="nav-label eyebrow">Empresa</p>' : ''}${i === 6 ? '<p class="nav-label eyebrow">Controle</p>' : ''}
       <button data-view="${v.id}" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">${ICON[v.icon]}</svg>
         ${v.nome}<span class="tag ${v.crit ? 'crit' : ''}">${v.tag}</span>
@@ -490,6 +503,34 @@ function liga() {
     if (dv) return drawerDivergencia(dv.dataset.div);
     const ag = e.target.closest('[data-agente]');
     if (ag) return drawerAgente(ag.dataset.agente);
+    const ad = e.target.closest('[data-arqdiv]');
+    if (ad) return drawerArqDivergencia(ad.dataset.arqdiv, openDrawer);
+    const ab = e.target.closest('[data-arq]');
+    if (ab) return acaoArquivo(ab.dataset.arq);
+  });
+
+  ligaArquivos(() => { if (atual === 'arquivos') nav('arquivos'); });
+  $('#main').addEventListener('change', async (e) => {
+    const inp = e.target.closest('.drop input[type=file]');
+    if (!inp || !inp.files.length) return;
+    const n = inp.files.length;
+    await ingerir([...inp.files]);
+    toast(`${n} arquivo${n > 1 ? 's' : ''} processado${n > 1 ? 's' : ''}${ARQ.erros.length ? ` · ${ARQ.erros.length} com erro` : ''}`);
+  });
+  ['dragover', 'dragenter'].forEach(ev => $('#main').addEventListener(ev, e => {
+    const d = e.target.closest('.drop'); if (!d) return;
+    e.preventDefault(); d.classList.add('over');
+  }));
+  ['dragleave', 'drop'].forEach(ev => $('#main').addEventListener(ev, e => {
+    const d = e.target.closest('.drop'); if (d) d.classList.remove('over');
+  }));
+  $('#main').addEventListener('drop', async (e) => {
+    const d = e.target.closest('.drop'); if (!d) return;
+    e.preventDefault();
+    const fs = [...(e.dataTransfer?.files || [])];
+    if (!fs.length) return;
+    await ingerir(fs);
+    toast(`${fs.length} arquivo${fs.length > 1 ? 's' : ''} processado${fs.length > 1 ? 's' : ''}${ARQ.erros.length ? ` · ${ARQ.erros.length} com erro` : ''}`);
   });
   $('#main').addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;

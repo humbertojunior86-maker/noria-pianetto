@@ -283,3 +283,35 @@ h3.sec:first-child { margin-top: 0; }
   table { font-size: 11.5px; }
   .panel table { display: block; overflow-x: auto; }
 }
+
+/* ---------- ARQUIVOS / OFX ---------- */
+.drops { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.drop {
+  display: grid; gap: 6px; justify-items: start; cursor: pointer;
+  padding: 18px; border: 1px dashed var(--line-strong); border-radius: var(--radius);
+  background: rgba(255,255,255,.012); transition: border-color .18s, background .18s;
+}
+.drop:hover, .drop.over { border-color: var(--amber); background: rgba(240,180,41,.05); }
+.drop svg { width: 20px; height: 20px; color: var(--amber); opacity: .85; margin-bottom: 2px; }
+.drop b { font-size: 12.6px; font-weight: 600; }
+.drop span { font-size: 11.6px; color: var(--ink-3); line-height: 1.55; }
+.drop-acts { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.hint { font-size: 11px; color: var(--ink-3); line-height: 1.5; }
+.erros {
+  margin-top: 12px; display: grid; gap: 6px; padding: 10px 12px;
+  border: 1px solid rgba(229,72,77,.35); border-radius: var(--radius);
+  background: rgba(229,72,77,.06); font-size: 11.8px; color: var(--ink-2);
+}
+.erros b { color: var(--crit); font-weight: 500; }
+.passo { display: grid; gap: 14px; }
+.passo .p { display: flex; gap: 12px; align-items: flex-start; }
+.passo .p i {
+  font-family: var(--mono); font-style: normal; font-size: 10.5px; color: var(--amber);
+  border: 1px solid rgba(240,180,41,.35); border-radius: 2px; padding: 2px 5px; flex: none; margin-top: 1px;
+}
+.passo .p b { display: block; font-size: 12.4px; font-weight: 600; margin-bottom: 4px; }
+.passo .p span { font-size: 11.9px; color: var(--ink-3); line-height: 1.6; }
+
+@media (max-width: 900px) {
+  .drops { grid-template-columns: 1fr; }
+}
