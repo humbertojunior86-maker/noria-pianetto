@@ -971,6 +971,65 @@ table.tabela td strong { color: var(--tinta); font-weight: var(--peso-medio); }
 .ceo-numerao.ceo-falho .apoio + * { color: var(--tinta-3); }
 .ceo-numerao.ceo-falho > .apoio { border: 0; }
 
+/* --------------------------------------------------- selo de prova do número
+   Regra da casa: número na tela diz de que porta veio e em que nível foi
+   provado. O selo é discreto, mas nunca some: quem lê de longe vê a cor. */
+.ceo-selo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-top: var(--e-1);
+  padding: 3px 8px;
+  border: 1px solid var(--linha-2);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--letra-larga);
+  color: var(--tinta-2);
+  cursor: help;
+}
+.ceo-selo i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.ceo-selo b { font-weight: var(--peso-medio); }
+.ceo-selo .porta {
+  padding-left: 6px;
+  border-left: 1px solid var(--linha-2);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--tinta-3);
+}
+.ceo-selo-conferido { color: var(--ok); border-color: var(--ok); background: var(--ok-fundo); }
+.ceo-selo-apurado { color: var(--tinta-2); }
+.ceo-selo-declarado { color: var(--atencao); border-color: var(--atencao); background: var(--atencao-fundo); }
+
+.ceo-legenda-selos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--e-1) var(--e-2);
+  margin-top: var(--e-3);
+  padding-top: var(--e-2);
+  border-top: 1px solid var(--linha);
+  font-size: var(--t-mini);
+  color: var(--tinta-3);
+}
+.ceo-legenda-selos .tit {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--letra-larga);
+  color: var(--tinta-2);
+}
+.ceo-legenda-selos .ceo-selo { margin-top: 0; }
+.ceo-legenda-selos .txt { margin-right: var(--e-2); }
+
 .ceo-carimbo {
   margin: var(--e-3) 0 0;
   font-family: var(--mono);

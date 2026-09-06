@@ -76,7 +76,28 @@ function carimbo(b, oQue) {
 
 /* ------------------------------------------------ faixa dos grandes números */
 
-function numerao({ rotulo, valor, exato, apoio, motivo, tom }) {
+/* Selo de prova. Regra da casa: todo número na tela diz de que porta veio e em
+   que nível foi provado. conferido = duas portas independentes bateram.
+   apurado = uma porta primária respondeu e ninguém contestou.
+   declarado = veio de relatório, e-mail ou pessoa e ainda não foi ao banco. */
+const SELOS = {
+  conferido: 'duas portas independentes chegaram a este número',
+  apurado: 'uma porta primária respondeu e ninguém contestou até agora',
+  declarado: 'veio de relatório, e-mail ou pessoa e ainda não foi conferido no banco',
+};
+
+function selo(s) {
+  if (!s || !s.nivel || !SELOS[s.nivel]) return null;
+  return el(`span.ceo-selo.ceo-selo-${s.nivel}`, {
+    title: `${SELOS[s.nivel]}${s.porta ? ` — porta: ${s.porta}` : ''}`,
+  }, [
+    el('i'),
+    el('b', { texto: s.nivel }),
+    s.porta ? el('span.porta', { texto: s.porta }) : null,
+  ]);
+}
+
+function numerao({ rotulo, valor, exato, apoio, motivo, tom, prova }) {
   if (motivo) {
     return el('div.ceo-numerao.ceo-falho', null, [
       el('span.rot', { texto: rotulo }),
@@ -88,7 +109,20 @@ function numerao({ rotulo, valor, exato, apoio, motivo, tom }) {
     el('span.rot', { texto: rotulo }),
     el('span.val', { texto: valor, title: exato || valor }),
     exato ? el('span.exato', { texto: exato }) : null,
+    selo(prova),
     apoio && apoio.length ? el('div.apoio', null, apoio) : null,
+  ]);
+}
+
+function legendaSelos() {
+  return el('div.ceo-legenda-selos', null, [
+    el('span.tit', { texto: 'selo de prova:' }),
+    el('span.ceo-selo.ceo-selo-conferido', { title: SELOS.conferido }, [el('i'), el('b', { texto: 'conferido' })]),
+    el('span.txt', { texto: 'duas portas bateram' }),
+    el('span.ceo-selo.ceo-selo-apurado', { title: SELOS.apurado }, [el('i'), el('b', { texto: 'apurado' })]),
+    el('span.txt', { texto: 'uma porta respondeu' }),
+    el('span.ceo-selo.ceo-selo-declarado', { title: SELOS.declarado }, [el('i'), el('b', { texto: 'declarado' })]),
+    el('span.txt', { texto: 'ainda não foi ao banco — não decide nada sozinho' }),
   ]);
 }
 
@@ -109,6 +143,7 @@ function faixaNumeros(d) {
       rotulo: 'Receita 12 meses',
       valor: abreviar(l.receita_12m),
       exato: f.dinheiro(l.receita_12m),
+      prova: { nivel: 'apurado', porta: 'ATUA · ctrc' },
       apoio: [
         el('span', { texto: `${f.numero(l.ctes_12m)} CT-es emitidos` }),
         el('span', { texto: ticket ? `ticket médio ${f.dinheiro(ticket)}` : 'ticket médio indisponível' }),
@@ -128,6 +163,7 @@ function faixaNumeros(d) {
       rotulo: 'Faturado no mês',
       valor: abreviar(l.receita_mes),
       exato: f.dinheiro(l.receita_mes),
+      prova: { nivel: 'apurado', porta: 'ATUA · ctrc' },
       apoio: [
         el('span', { texto: `${f.numero(l.ctes_mes)} CT-es no mês` }),
         anterior
@@ -152,6 +188,12 @@ function faixaNumeros(d) {
       rotulo,
       valor: abreviar(linha.aberto),
       exato: f.dinheiro(linha.aberto),
+      /* A receber foi conferida em 05/09/2026 por duas portas: o saldo do título
+         e a soma das baixas lançadas uma a uma em titulo_pagamento. A pagar
+         ainda não teve essa contraprova, então continua apurada. */
+      prova: tipo === 1
+        ? { nivel: 'conferido', porta: 'ATUA · titulo × titulo_pagamento' }
+        : { nivel: 'apurado', porta: 'ATUA · titulo' },
       apoio: [
         el('span', { texto: `${f.numero(linha.qt)} títulos em aberto` }),
         el('span.ceo-vermelho', {
@@ -180,6 +222,7 @@ function faixaNumeros(d) {
   return el('section.ceo-faixa', null, [
     hoje,
     el('div.ceo-numeroes', null, cartoes),
+    legendaSelos(),
     carimbo(p, 'Receita e CT-es'),
   ]);
 }
