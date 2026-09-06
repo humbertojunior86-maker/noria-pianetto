@@ -1,5 +1,5 @@
--- Córtex de raciocínio — tabelas laterais (DD-002).
--- Nenhuma tabela existente da NÓRIA depende destas. Se o córtex sumir do
+-- NÓRIA de raciocínio — tabelas laterais (DD-002).
+-- Nenhuma tabela existente da NÓRIA depende destas. Se a NÓRIA sumir do
 -- disco, o sistema sobe igual.
 
 CREATE TABLE IF NOT EXISTS hipotese (

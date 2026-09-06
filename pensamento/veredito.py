@@ -1,6 +1,6 @@
 """Veredito — a hipótese encara o banco.
 
-Roda a consulta principal e a contraprova, entrega as LINHAS ao córtex e pede
+Roda a consulta principal e a contraprova, entrega as LINHAS à NÓRIA e pede
 uma leitura em português. O conferente confere número por número: o que não
 tiver lastro nas linhas devolvidas bloqueia a leitura inteira. Confirmada,
 vira aprendizado em estado proposto, esperando o aval do CEO.
@@ -12,7 +12,7 @@ import json
 from nucleo import bd
 from . import cliente, conferente, prova
 
-SISTEMA = """Você é o córtex da NÓRIA lendo o resultado de uma prova.
+SISTEMA = """Você é a NÓRIA lendo o resultado de uma prova.
 
 Recebeu: a pergunta, o SQL que rodou e as LINHAS que o banco devolveu.
 
@@ -120,8 +120,8 @@ def provar(hipotese_id: int, respeitar_janela: bool = True) -> dict:
         aprendizado_id = bd.inserir("aprendizado", {
             "empresa_id": h["empresa_id"],
             "enunciado": r["enunciado"].strip()[:2000],
-            "origem": f"córtex · ATUA ({selo} em {bd.agora()[:10]}) · hipótese {hipotese_id}",
-            "escopo": "cortex", "estado": "proposto", "criado_em": bd.agora()})
+            "origem": f"NÓRIA · ATUA ({selo} em {bd.agora()[:10]}) · hipótese {hipotese_id}",
+            "escopo": "pensamento", "estado": "proposto", "criado_em": bd.agora()})
 
     return {"ok": True, "estado": veredito, "leitura": leitura,
             "portas": portas_ok, "aprendizado_id": aprendizado_id,

@@ -1487,12 +1487,12 @@ function faixaRitmo({ nomes }) {
 
 /* ---------------------------------------------------------------- tela --- */
 
-/* ------------------------------------------------------------------ córtex --
+/* ------------------------------------------------------------------ NÓRIA --
    O que a NÓRIA perguntou por conta própria. Uma pergunta só aparece aqui
    depois de encarar o banco: nenhuma frase desta lista foi escrita sem que um
-   SELECT determinístico tivesse rodado antes. O bloco tem vida própria — se o
-   córtex estiver desligado ou sem crédito, ele diz isso por escrito e o resto
-   da sala continua igual. */
+   SELECT determinístico tivesse rodado antes. O bloco tem vida própria — se a
+   NÓRIA estiver sem chave ou no teto de gasto, ele diz isso por escrito e o
+   resto da sala continua igual. */
 const ESTADO_HIP = {
   levantada: { rot: 'esperando prova', tom: 'ceo-hip-espera' },
   em_prova: { rot: 'na mesa de prova', tom: 'ceo-hip-espera' },
@@ -1544,11 +1544,11 @@ function linhaHipotese(h, aoDecidir) {
   ]);
 }
 
-function blocoCortex() {
-  const corpo = el('div.ceo-cortex');
+function blocoPensamento() {
+  const corpo = el('div.ceo-pensa');
   const no = painel({
     titulo: 'O que a NÓRIA perguntou sozinha',
-    nota: 'perguntas levantadas pelo córtex e levadas ao banco. Nenhum número aqui '
+    nota: 'perguntas que a NÓRIA levantou e levou ao banco. Nenhum número aqui '
       + 'foi escrito pelo modelo: quem soma é o SQL, e a leitura que citar valor sem '
       + 'lastro nas linhas é bloqueada antes de chegar nesta tela.',
     corpo: [corpo],
@@ -1569,11 +1569,11 @@ function blocoCortex() {
   async function atualizar() {
     let d;
     try {
-      d = await api.cortex();
+      d = await api.pensamento();
     } catch (e) {
       limpar(corpo);
       juntar(corpo, el('div.aviso-erro', {
-        texto: `O córtex não respondeu: ${e && e.message ? e.message : 'erro inesperado'}. `
+        texto: `A NÓRIA não conseguiu pensar agora: ${e && e.message ? e.message : 'erro inesperado'}. `
           + 'A sala segue mostrando os números dos agentes, que não dependem dele.',
       }));
       return;
@@ -1581,8 +1581,8 @@ function blocoCortex() {
 
     limpar(corpo);
     if (!d.ligado) {
-      juntar(corpo, el('div.ceo-cortex-off', null, [
-        el('b', { texto: 'córtex desligado' }),
+      juntar(corpo, el('div.ceo-pensa-off', null, [
+        el('b', { texto: 'A NÓRIA não está pensando agora' }),
         el('span', {
           texto: (d.motivo || (d.estado && d.estado.motivo)
             || 'sem chave da Claude neste servidor')
@@ -1594,18 +1594,18 @@ function blocoCortex() {
 
     const est = d.estado || {};
     const c = d.contagem || {};
-    juntar(corpo, el('div.ceo-cortex-barra', null, [
+    juntar(corpo, el('div.ceo-pensa-barra', null, [
       el('span', { texto: `modelo ${est.modelo || '—'}` }),
       el('span', { texto: `gasto hoje R$ ${f.numero(est.gasto_dia || 0, 2)} de R$ ${f.numero(est.teto_dia || 0, 2)}` }),
       el('span', { texto: `no mês R$ ${f.numero(est.gasto_mes || 0, 2)} de R$ ${f.numero(est.teto_mes || 0, 2)}` }),
       el('span', { texto: `confirmadas ${f.numero(c.confirmada || 0)} · derrubadas ${f.numero(c.derrubada || 0)} · inconclusivas ${f.numero(c.inconclusiva || 0)}` }),
-      est.dormente ? el('b.ceo-cortex-dorme', { texto: `dormente: ${est.motivo || 'teto atingido'}` }) : null,
+      est.dormente ? el('b.ceo-pensa-dorme', { texto: `dormente: ${est.motivo || 'teto atingido'}` }) : null,
     ]));
 
     const hips = Array.isArray(d.hipoteses) ? d.hipoteses : [];
     if (!hips.length) {
       juntar(corpo, el('p.ajuda', {
-        texto: 'O córtex ainda não levantou nenhuma pergunta. O faro roda uma vez por dia, '
+        texto: 'A NÓRIA ainda não levantou nenhuma pergunta. O faro roda uma vez por dia, '
           + 'depois que os agentes fecham o ciclo.',
       }));
       return;
@@ -1632,8 +1632,8 @@ export async function montar(raiz, _params, { pulso, ir }) {
   /* A faixa entra entre os grandes números e o resto: o dono lê o dinheiro,
      depois pergunta "e a NÓRIA, está fazendo alguma coisa?" — a resposta tem
      que estar exatamente aí, antes de qualquer gráfico. */
-  const cortex = blocoCortex();
-  juntar(caixa, [barra, painelDados, ritmo.no, cortex.no, resto, fluxo]);
+  const pensa = blocoPensamento();
+  juntar(caixa, [barra, painelDados, ritmo.no, pensa.no, resto, fluxo]);
   juntar(raiz, caixa);
 
   let timer = 0;
@@ -1657,8 +1657,8 @@ export async function montar(raiz, _params, { pulso, ir }) {
         }
       });
       if (nomeNovo) ritmo.redesenhar();
-      /* o córtex é lido em separado e nunca derruba o desenho dos números */
-      cortex.atualizar();
+      /* o pensamento é lido em separado e nunca derruba o desenho dos números */
+      pensa.atualizar();
       limpar(painelDados);
       juntar(painelDados, faixaNumeros(d));
       limpar(resto);

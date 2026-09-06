@@ -20,7 +20,7 @@ Todo número exibido vem de uma rota da API. Não existe dado de exemplo em nenh
 
 Removidos por serem do sistema anterior: `js/data.js`, `js/boot.js`, `js/grafo.js`,
 `js/especialistas.js`, `js/arquivos.js`, além das versões antigas de `app.js` e `app.css`.
-Nenhuma referência ao nome antigo restou no código (`rg -i cortex` volta vazio).
+Nenhuma referência ao nome antigo restou no código.
 
 ## Telas
 

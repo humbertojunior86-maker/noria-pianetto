@@ -2393,28 +2393,28 @@ body.modo-saguao {
   .ceo-plano-frase, .ceo-linha-topo { font-size: var(--t-mini); }
 }
 
-/* ------------------------------------------------------------------ córtex --
+/* ------------------------------------------------------------------ NÓRIA --
    O bloco das perguntas que a NÓRIA levanta sozinha. Cor só onde o estado
    pede: verde quando o banco confirmou, âmbar quando ficou em dúvida,
    apagado quando caiu. Nada pisca. */
-.ceo-cortex { display: flex; flex-direction: column; gap: 12px; }
+.ceo-pensa { display: flex; flex-direction: column; gap: 12px; }
 
-.ceo-cortex-off {
+.ceo-pensa-off {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px;
   padding: 14px 16px; border: 1px dashed var(--linha-2);
   border-radius: var(--raio); color: var(--tinta-2);
 }
-.ceo-cortex-off b {
+.ceo-pensa-off b {
   color: var(--tinta); letter-spacing: .06em; text-transform: uppercase;
   font-size: 11px;
 }
 
-.ceo-cortex-barra {
+.ceo-pensa-barra {
   display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline;
   padding-bottom: 10px; border-bottom: 1px solid var(--linha-2);
   font-size: 12px; color: var(--tinta-2); font-variant-numeric: tabular-nums;
 }
-.ceo-cortex-dorme { color: var(--atencao); }
+.ceo-pensa-dorme { color: var(--atencao); }
 
 .ceo-hip {
   padding: 14px 16px; border: 1px solid var(--linha-2);

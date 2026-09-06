@@ -881,27 +881,27 @@ def demanda_vira_missao(did: int, dados: dict = Body(default={}),
     return {"ok": True, "missao_id": mid}
 
 
-# --------------------------------------------------------------------- córtex
-# O córtex é lateral: se a pasta não existir, estes endpoints respondem
+# --------------------------------------------------------------------- NÓRIA
+# O pensamento da NÓRIA é lateral: se a pasta não existir, estes endpoints respondem
 # "desligado" e o resto da NÓRIA segue igual.
-def _cortex():
+def _pensamento():
     try:
-        from cortex import cliente as cx
+        from pensamento import cliente as cx
         return cx
     except Exception:
         return None
 
 
-@app.get("/api/cortex")
-def cortex_estado(s: dict = Depends(sessao)):
-    """O que o córtex pensou, o que ele provou e quanto custou."""
-    cx = _cortex()
+@app.get("/api/pensamento")
+def pensamento_estado(s: dict = Depends(sessao)):
+    """o que a NÓRIA pensou, o que ela provou e quanto custou."""
+    cx = _pensamento()
     if cx is None:
-        return {"ligado": False, "motivo": "córtex não instalado neste servidor"}
+        return {"ligado": False, "motivo": "o pensamento não está instalado neste servidor"}
     try:
         est = cx.estado()
     except Exception as e:
-        return {"ligado": False, "motivo": f"córtex sem base: {e}"}
+        return {"ligado": False, "motivo": f"pensamento sem base: {e}"}
 
     emp = s["empresa_id"]
     try:
@@ -913,7 +913,7 @@ def cortex_estado(s: dict = Depends(sessao)):
             "SELECT estado, COUNT(*) AS n FROM hipotese WHERE empresa_id=? "
             "GROUP BY estado", (emp,))}
     except Exception as e:
-        return {"ligado": False, "motivo": f"tabelas do córtex ausentes: {e}"}
+        return {"ligado": False, "motivo": f"tabelas do pensamento ausentes: {e}"}
 
     for h in hips:
         h["consultas"] = bd.linhas(
@@ -923,8 +923,8 @@ def cortex_estado(s: dict = Depends(sessao)):
             "contagem": contagem, "hipoteses": hips}
 
 
-@app.get("/api/cortex/hipoteses/{hid}")
-def cortex_hipotese(hid: int, s: dict = Depends(sessao)):
+@app.get("/api/pensamento/hipoteses/{hid}")
+def pensamento_hipotese(hid: int, s: dict = Depends(sessao)):
     h = bd.linha("SELECT * FROM hipotese WHERE id=? AND empresa_id=?",
                  (hid, s["empresa_id"]))
     if not h:
@@ -937,9 +937,9 @@ def cortex_hipotese(hid: int, s: dict = Depends(sessao)):
     return h
 
 
-@app.post("/api/cortex/hipoteses/{hid}/decidir")
-def cortex_decidir(hid: int, dados: dict = Body(...), s: dict = Depends(sessao)):
-    """O CEO aceita ou rejeita o que o córtex levantou. Sem isso, nada vira fato."""
+@app.post("/api/pensamento/hipoteses/{hid}/decidir")
+def pensamento_decidir(hid: int, dados: dict = Body(...), s: dict = Depends(sessao)):
+    """O CEO aceita ou rejeita o que a NÓRIA levantou. Sem isso, nada vira fato."""
     if (s["usuario"]["papel"] or "") not in ("ceo", "gestor"):
         raise HTTPException(403, "só o CEO decide hipótese")
     decisao = (dados.get("decisao") or "").strip()

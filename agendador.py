@@ -145,16 +145,16 @@ def _rodar_vigilancia(chave: str, d: date) -> list[int]:
     return [mid] if mid else []
 
 
-def ciclo_do_cortex(dia: date | None = None) -> list[int]:
+def ciclo_do_pensamento(dia: date | None = None) -> list[int]:
     """O faro do dia: a NÓRIA olha o próprio resultado e levanta perguntas.
 
     Roda às 19h, depois que todas as varreduras fecharam — pensar sobre o dia
     exige que o dia tenha acontecido. É a única rotina que pode falhar sem
-    consequência: se o córtex estiver desligado, sem chave ou no teto de
+    consequência: se a NÓRIA estiver sem chave, sem chave ou no teto de
     gasto, ela volta vazia e o resto do agendador segue igual.
     """
     try:
-        from cortex import cliente as cx, faro, veredito
+        from pensamento import cliente as cx, faro, veredito
     except Exception:
         return []
     try:
@@ -162,7 +162,7 @@ def ciclo_do_cortex(dia: date | None = None) -> list[int]:
             return []
         faro.levantar()
         veredito.provar_pendentes()
-    except cx.CortexIndisponivel:
+    except cx.PensamentoIndisponivel:
         return []
     except Exception:
         return []
@@ -206,10 +206,10 @@ ROTINAS = [
      "do custo da frota", 17, None, None),
     ("receber_fim_de_dia", "cobrança: fechamento do dia", 18, {0, 1, 2, 3, 4},
      None),
-    # Última da fila, e de propósito: o córtex só pensa sobre o que os agentes
+    # Última da fila, e de propósito: a NÓRIA só pensa sobre o que os agentes
     # já apuraram no dia. Nunca ao contrário.
-    ("cortex", "córtex: faro do dia e mesa de prova", 19, None,
-     ciclo_do_cortex),
+    ("pensamento", "NÓRIA: faro do dia e mesa de prova", 19, None,
+     ciclo_do_pensamento),
 ]
 
 

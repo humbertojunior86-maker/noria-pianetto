@@ -1,6 +1,6 @@
 """Faro — a NÓRIA passa a perguntar, não só a responder.
 
-Recebe só os RESULTADOS do dia (nunca o banco cru), pede ao córtex até cinco
+Recebe só os RESULTADOS do dia (nunca o banco cru), pede à NÓRIA até cinco
 perguntas novas, cada uma com motivo, aposta e o SELECT que a testa. Toda
 consulta passa pela guarda antes de existir. Nada é confirmado aqui: quem
 confirma é a mesa de prova.
@@ -17,7 +17,7 @@ from . import cliente, guarda, higiene
 
 EMPRESA = 1
 
-SISTEMA = """Você é o córtex de raciocínio da NÓRIA, o cérebro corporativo da
+SISTEMA = """Você é a NÓRIA, o cérebro corporativo da
 Pianetto Transportes, uma transportadora rodoviária de cargas brasileira.
 
 O que você é: o faro da casa. Você olha os resultados do dia e levanta

@@ -1,6 +1,6 @@
 """Mesa de prova — onde a regra volta a mandar.
 
-A hipótese que o córtex levantou só existe de verdade depois que um SELECT
+A hipótese que a NÓRIA levantou só existe de verdade depois que um SELECT
 determinístico roda no ATUA, em transação somente leitura, e devolve linhas.
 Nenhum número desta etapa foi escrito por modelo: todos vêm do cursor.
 """
