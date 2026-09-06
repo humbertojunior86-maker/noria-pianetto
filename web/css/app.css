@@ -2459,3 +2459,39 @@ body.modo-saguao {
   .ceo-hip-topo { flex-direction: column; gap: 2px; }
   .ceo-hip-acoes .btn { flex: 1 1 auto; justify-content: center; }
 }
+
+/* diário da autonomia — o registro do que a NÓRIA fez sozinha */
+.ceo-auto { display: flex; flex-direction: column; gap: 12px; }
+
+.ceo-auto-placar {
+  display: flex; flex-wrap: wrap; gap: 18px;
+  padding-bottom: 10px; border-bottom: 1px solid var(--linha-2);
+  font-size: 13px; color: var(--tinta-2);
+}
+.ceo-auto-placar span:first-child { color: var(--tinta); font-weight: 600; }
+
+.ceo-atos { list-style: none; margin: 0; padding: 0; }
+
+.ceo-ato {
+  display: grid;
+  grid-template-columns: 88px 108px 1fr;
+  gap: 12px; align-items: baseline;
+  padding: 7px 0; border-bottom: 1px solid var(--linha-3);
+  font-size: 13px; line-height: 1.45;
+}
+.ceo-ato:last-child { border-bottom: 0; }
+
+.ceo-ato-hora {
+  font-variant-numeric: tabular-nums;
+  color: var(--tinta-3); font-size: 12px;
+}
+.ceo-ato-fonte {
+  font-size: 10px; letter-spacing: .08em; font-weight: 700;
+  color: var(--acento);
+}
+.ceo-ato-txt { color: var(--tinta-2); }
+
+@media (max-width: 700px) {
+  .ceo-ato { grid-template-columns: 1fr; gap: 2px; padding: 9px 0; }
+  .ceo-ato-hora, .ceo-ato-fonte { font-size: 11px; }
+}

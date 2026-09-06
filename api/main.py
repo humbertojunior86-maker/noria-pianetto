@@ -6,6 +6,7 @@ de cada coisa. Integração desconectada chega aqui como desconectada.
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 import sys
 from datetime import datetime, timedelta
@@ -953,6 +954,96 @@ def pensamento_decidir(hid: int, dados: dict = Body(...), s: dict = Depends(sess
     bd.executar("UPDATE hipotese SET estado=?, decidida_em=? WHERE id=?",
                 (novo, bd.agora(), hid))
     return {"ok": True, "estado": novo}
+
+
+
+# ------------------------------------------------------------------ autonomia
+# "Como eu sei que ela está agindo por conta própria?" Esta é a resposta, e ela
+# não é uma frase de efeito: é o registro do que aconteceu sem nenhum clique
+# humano. Só entra aqui o que tem ator de máquina e carimbo de hora. Toda linha
+# diz QUEM agiu, O QUE fez e A QUE HORAS. Se num dia não houver nada, a tela diz
+# que não houve nada — nunca inventa movimento para parecer viva.
+_ATOS = {
+    "sentinela.alerta": ("sentinela", "viu mudança no faturamento e avisou"),
+    "sentinela.missao": ("sentinela", "abriu missão sem ninguém pedir"),
+    "sentinela.pulso": ("sentinela", "leu o faturamento do dia"),
+    "agendador.varredura": ("agendador", "abriu a varredura da hora marcada"),
+    "missao.aberta": ("agendador", "colocou missão na fila"),
+    "missao.encerrada": ("agentes", "fechou missão"),
+}
+
+
+@app.get("/api/autonomia")
+def autonomia(s: dict = Depends(sessao)):
+    """Tudo o que a NÓRIA fez sozinha, em ordem de hora, com a fonte de cada ato."""
+    eid = s["usuario"]["empresa_id"]
+    atos = []
+    ja_ditas = set()   # missão que a sentinela já anunciou não entra duas vezes
+
+    # 1. o que a sentinela e o agendador registraram como evento
+    for r in bd.linhas(
+        "SELECT tipo, ator, texto, criado_em FROM evento "
+        "WHERE empresa_id = ? AND tipo IN ('sentinela.alerta','sentinela.missao',"
+        "'agendador.varredura') ORDER BY id DESC LIMIT 40", (eid,)):
+        fonte, _ = _ATOS.get(r["tipo"], ("núcleo", ""))
+        if r["tipo"] == "sentinela.missao":
+            m = re.search(r"missão (\d+)", r["texto"] or "")
+            if m:
+                ja_ditas.add(int(m.group(1)))
+        atos.append({"quando": r["criado_em"], "fonte": fonte,
+                     "o_que": r["texto"], "peso": "ato"})
+
+    # 2. missões que nasceram de máquina — nenhuma pessoa pediu
+    for r in bd.linhas(
+        "SELECT id, objetivo, origem, estado, criada_em, encerrada_em FROM missao "
+        "WHERE empresa_id = ? AND origem <> 'humano' ORDER BY id DESC LIMIT 20", (eid,)):
+        if r["id"] in ja_ditas:
+            continue
+        atos.append({
+            "quando": r["criada_em"], "fonte": r["origem"],
+            "o_que": f"abriu a missão {r['id']}: {r['objetivo']}",
+            "estado": r["estado"], "peso": "missao",
+        })
+
+    # 3. perguntas que ela levantou por conta própria
+    try:
+        for r in bd.linhas(
+            "SELECT id, pergunta, estado, criada_em FROM hipotese "
+            "ORDER BY id DESC LIMIT 15"):
+            atos.append({"quando": r["criada_em"], "fonte": "pensamento",
+                         "o_que": f"perguntou: {r['pergunta']}",
+                         "estado": r["estado"], "peso": "hipotese"})
+    except Exception:
+        pass  # sem a base do pensamento o resto do diário continua valendo
+
+    # 4. e-mails que a ponte trouxe sem ninguém abrir a caixa
+    try:
+        for r in bd.linhas(
+            "SELECT id, assunto, classe, criada_em FROM demanda "
+            "WHERE empresa_id = ? ORDER BY id DESC LIMIT 15", (eid,)):
+            atos.append({"quando": r["criada_em"], "fonte": "ponte",
+                         "o_que": f"trouxe do Outlook: {r['assunto']}",
+                         "estado": r["classe"], "peso": "demanda"})
+    except Exception:
+        pass
+
+    atos.sort(key=lambda a: a["quando"] or "", reverse=True)
+
+    # o placar responde à pergunta em números: quanto foi máquina, quanto foi gente
+    m_maquina = bd.linha("SELECT count(*) AS n FROM missao WHERE empresa_id = ? "
+                         "AND origem <> 'humano'", (eid,))
+    m_humana = bd.linha("SELECT count(*) AS n FROM missao WHERE empresa_id = ? "
+                        "AND origem = 'humano'", (eid,))
+    ultimo = atos[0]["quando"] if atos else None
+    return {
+        "atos": atos[:60],
+        "placar": {
+            "missoes_maquina": (m_maquina or {}).get("n", 0),
+            "missoes_humano": (m_humana or {}).get("n", 0),
+            "ultimo_ato": ultimo,
+        },
+        "agora": bd.agora(),
+    }
 
 
 # ------------------------------------------------------------------- estático

@@ -1616,6 +1616,94 @@ function blocoPensamento() {
   return { no, atualizar };
 }
 
+
+/* --------------------------------------------------------------- autonomia --
+   A pergunta que o dono da empresa faz mais cedo ou mais tarde é "como eu sei
+   que essa coisa está trabalhando quando eu não estou olhando?". Este bloco é a
+   resposta em forma de registro: cada linha tem hora, quem agiu e o que fez, e
+   nenhuma delas nasceu de um clique humano. Se num período a NÓRIA não fez nada,
+   o bloco diz isso — silêncio declarado vale mais do que movimento inventado. */
+const FONTE_TXT = {
+  sentinela: 'SENTINELA',
+  agendador: 'AGENDADOR',
+  agentes: 'AGENTES',
+  pensamento: 'PENSAMENTO',
+  ponte: 'PONTE',
+};
+
+function horaCurta(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  /* A hora é sempre a de Brasília, não a do aparelho: o dono pode abrir de
+     outro fuso e o registro tem que bater com o relógio da operação. */
+  const ZONA = 'America/Sao_Paulo';
+  const parte = (dt) => new Intl.DateTimeFormat('pt-BR', {
+    timeZone: ZONA, day: '2-digit', month: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(dt);
+  const [dia, hora] = parte(d).split(', ');
+  const [hojeDia] = parte(new Date()).split(', ');
+  return dia === hojeDia ? `hoje ${hora}` : `${dia} ${hora}`;
+}
+
+function linhaAto(a) {
+  return el('li.ceo-ato', null, [
+    el('span.ceo-ato-hora', { texto: horaCurta(a.quando) }),
+    el('span.ceo-ato-fonte', { texto: FONTE_TXT[a.fonte] || String(a.fonte || '').toUpperCase() }),
+    el('span.ceo-ato-txt', { texto: a.o_que || '' }),
+  ]);
+}
+
+function blocoAutonomia() {
+  const corpo = el('div.ceo-auto');
+  const no = painel({
+    titulo: 'O que a NÓRIA fez sem ninguém pedir',
+    nota: 'registro corrido das ações que partiram da própria NÓRIA. Nenhuma linha '
+      + 'daqui teve clique humano: é a sentinela lendo o faturamento, o agendador '
+      + 'abrindo a varredura da hora, o pensamento levantando pergunta e a ponte '
+      + 'trazendo e-mail. Cada uma com a hora em que aconteceu.',
+    corpo: [corpo],
+  });
+
+  async function atualizar() {
+    let d;
+    try {
+      d = await api.autonomia();
+    } catch (e) {
+      limpar(corpo);
+      juntar(corpo, el('div.aviso-erro', {
+        texto: `Não deu para ler o diário: ${e && e.message ? e.message : 'erro inesperado'}.`,
+      }));
+      return;
+    }
+
+    limpar(corpo);
+    const p = d.placar || {};
+    const total = (p.missoes_maquina || 0) + (p.missoes_humano || 0);
+    const parte = total ? Math.round((p.missoes_maquina || 0) * 100 / total) : 0;
+    juntar(corpo, el('div.ceo-auto-placar', null, [
+      el('span', { texto: `${f.numero(p.missoes_maquina || 0)} de ${f.numero(total)} missões nasceram da própria NÓRIA (${parte}%)` }),
+      el('span', { texto: p.ultimo_ato ? `último ato ${horaCurta(p.ultimo_ato)}` : 'nenhum ato registrado' }),
+    ]));
+
+    const atos = Array.isArray(d.atos) ? d.atos : [];
+    if (!atos.length) {
+      juntar(corpo, el('p.ajuda', {
+        texto: 'A NÓRIA ainda não agiu por conta própria desde que subiu. '
+          + 'A sentinela lê o faturamento de hora em hora e o agendador abre as '
+          + 'varreduras entre 6h e 18h — a primeira linha aparece aqui sozinha.',
+      }));
+      return;
+    }
+    const lista = el('ul.ceo-atos');
+    atos.slice(0, 25).forEach((a) => juntar(lista, linhaAto(a)));
+    juntar(corpo, lista);
+  }
+
+  return { no, atualizar };
+}
+
 export async function montar(raiz, _params, { pulso, ir }) {
   const caixa = el('div.ceo');
   const painelDados = el('div');   /* os grandes números */
@@ -1633,7 +1721,8 @@ export async function montar(raiz, _params, { pulso, ir }) {
      depois pergunta "e a NÓRIA, está fazendo alguma coisa?" — a resposta tem
      que estar exatamente aí, antes de qualquer gráfico. */
   const pensa = blocoPensamento();
-  juntar(caixa, [barra, painelDados, ritmo.no, pensa.no, resto, fluxo]);
+  const auto = blocoAutonomia();
+  juntar(caixa, [barra, painelDados, ritmo.no, auto.no, pensa.no, resto, fluxo]);
   juntar(raiz, caixa);
 
   let timer = 0;
@@ -1659,6 +1748,7 @@ export async function montar(raiz, _params, { pulso, ir }) {
       if (nomeNovo) ritmo.redesenhar();
       /* o pensamento é lido em separado e nunca derruba o desenho dos números */
       pensa.atualizar();
+      auto.atualizar();
       limpar(painelDados);
       juntar(painelDados, faixaNumeros(d));
       limpar(resto);

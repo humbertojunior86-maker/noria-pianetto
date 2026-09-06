@@ -100,6 +100,9 @@ export const evidencia = (id) => pedir(`/evidencias/${id}`);
 /* O pensamento tem chamada própria: se ele estiver desligado ou sem crédito, a
    Sala do CEO continua desenhando os números normalmente. */
 export const pensamento = () => pedir('/pensamento');
+
+/* o diário do que a NÓRIA fez sem ninguém pedir */
+export const autonomia = () => pedir('/autonomia');
 export const decidirHipotese = (id, decisao) =>
   pedir(`/pensamento/hipoteses/${id}/decidir`, { metodo: 'POST', corpo: { decisao } });
 
