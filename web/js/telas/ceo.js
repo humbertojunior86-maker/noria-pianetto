@@ -1516,7 +1516,12 @@ function linhaHipotese(h, aoDecidir) {
     }),
   ]));
 
-  const podeDecidir = h.estado === 'confirmada' || h.estado === 'inconclusiva';
+  /* Guardar como aprendizado só faz sentido no que o banco confirmou. O que
+     ficou inconclusivo ou foi derrubado só pode ser tirado da frente — nada
+     que não passou pela prova entra no acervo da casa. */
+  const podeGuardar = h.estado === 'confirmada';
+  const podeDescartar = h.estado !== 'rejeitada' && h.estado !== 'levantada' && h.estado !== 'em_prova';
+  const podeDecidir = podeGuardar || podeDescartar;
   return el(`div.ceo-hip.${e.tom}`, null, [
     el('div.ceo-hip-topo', null, [
       el('span.ceo-hip-estado', { texto: e.rot }),
@@ -1527,14 +1532,14 @@ function linhaHipotese(h, aoDecidir) {
     h.leitura ? el('p.ceo-hip-leitura', { texto: h.leitura }) : null,
     portas.length ? el('div.ceo-hip-portas', null, portas) : null,
     podeDecidir ? el('div.ceo-hip-acoes', null, [
-      el('button.btn.btn-peq', {
+      podeGuardar ? el('button.btn.btn-peq', {
         type: 'button',
         onclick: () => aoDecidir(h.id, 'aceitar'),
-      }, [el('span', { texto: 'Guardar como aprendizado' })]),
-      el('button.btn.btn-peq.btn-vazio', {
+      }, [el('span', { texto: 'Guardar como aprendizado' })]) : null,
+      podeDescartar ? el('button.btn.btn-peq.btn-vazio', {
         type: 'button',
         onclick: () => aoDecidir(h.id, 'rejeitar'),
-      }, [el('span', { texto: 'Descartar' })]),
+      }, [el('span', { texto: 'Descartar' })]) : null,
     ]) : null,
   ]);
 }

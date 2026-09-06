@@ -37,6 +37,11 @@ Formato, JSON puro:
 """
 
 
+def _br(v: float) -> str:
+    """Número em português: milhar com ponto, decimal com vírgula."""
+    return f"{v:,.2f}".replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+
+
 def _linhas_da(cp_id):
     cp = bd.linha("SELECT resultado_json FROM consulta_proposta WHERE id=?", (cp_id,))
     return bd.dj(cp["resultado_json"], []) if cp and cp["resultado_json"] else []
@@ -96,7 +101,7 @@ def provar(hipotese_id: int, respeitar_janela: bool = True) -> dict:
     check = conferente.conferir(leitura + " " + (r.get("enunciado") or ""), lastro)
     if not check["ok"]:
         aviso = ("leitura bloqueada pelo conferente: número sem lastro nas "
-                 "linhas do banco — " + ", ".join(f"{n:,.2f}" for n in check["orfaos"]))
+                 "linhas do banco — " + ", ".join(_br(n) for n in check["orfaos"]))
         bd.executar("UPDATE hipotese SET estado='inconclusiva', leitura=?, "
                     "decidida_em=? WHERE id=?", (aviso, bd.agora(), hipotese_id))
         bd.inserir("raciocinio", {"hipotese_id": hipotese_id, "passo": 3,
