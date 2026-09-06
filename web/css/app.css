@@ -2244,7 +2244,92 @@ body.modo-saguao {
   color: var(--tinta-4);
 }
 
+/* O aviso de rolagem lateral só existe onde a tabela realmente não cabe: em
+   tela larga ela cabe inteira e o aviso seria ruído. */
+.ceo-arrasta { display: none; margin: 0 0 var(--e-2); font-size: var(--t-micro);
+  color: var(--tinta-4); font-family: var(--mono); }
+.ritmo-agora.fim .ritmo-agora-rot { transform: translateX(-100%); padding-right: 4px; }
+
 /* Receita de placa própria que o documento classificou como agregado: fica
    marcada na coluna para o CEO nunca ler o total sem lembrar do ajuste. */
 .ceo-veiculos td.num.reclass { color: var(--atencao); }
 .ceo-veiculos td.num.reclass::after { content: ' *'; }
+
+/* ==========================================================================
+   Sala do CEO no celular
+   A tela nasceu para ser lida da porta da sala, em painel grande. No celular
+   o mesmo desenho vira rolagem sem fim: um cartao por tela, tabela cortada
+   pela metade sem dizer que corta, e numero exato que estoura a coluna.
+   Aqui o painel muda de postura — mais denso, dois por linha, tabela com a
+   coluna do nome ancorada e sombra avisando que ha mais para o lado — sem
+   esconder nenhum numero: no celular tambem se cobra o mesmo da empresa.
+   ========================================================================== */
+@media (max-width: 700px) {
+  /* Dois cartoes por linha: a tela mostra o conjunto, nao um numero de cada
+     vez. O tipo grande encolhe junto para o numero continuar em uma linha. */
+  .ceo-numeroes { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--e-2); }
+  .ceo-numerao { padding: var(--e-3); gap: 4px; }
+  .ceo-numerao .val { font-size: clamp(17px, 5.6vw, 26px); }
+  .ceo-numerao .exato { font-size: var(--t-micro); overflow-wrap: anywhere; }
+  .ceo-numerao .apoio { font-size: var(--t-micro); gap: 2px; }
+  .ceo-numerao.ceo-falho .motivo { font-size: var(--t-peq); }
+
+  /* Um cartao de placa por linha, e o resumo do plano em dois por linha. */
+  .ceo-plano-nums { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--e-2); }
+  /* Numero longo em coluna estreita: encolhe em vez de quebrar no meio. */
+  .ceo-plano-num b { font-size: clamp(13px, 4vw, 18px); }
+  .ceo-placas { grid-template-columns: minmax(0, 1fr); }
+  .ceo-placa-nums, .ceo-placa-diesel { font-size: 10px; line-height: 1.5; }
+  .ceo-placa-topo { gap: 4px 6px; }
+
+  /* Tabela: a coluna do nome fica ancorada e o resto corre por baixo dela.
+     A sombra na borda direita e o aviso de que existe mais coluna adiante —
+     sem ela o CEO le metade do numero achando que e o numero. */
+  .ceo-agencias, .tabela-caixa {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    background:
+      linear-gradient(to right, var(--painel-fundo) 30%, transparent) left / 24px 100% no-repeat local,
+      linear-gradient(to left, var(--painel-fundo) 30%, transparent) right / 24px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, .45), transparent) left / 12px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, .45), transparent) right / 12px 100% no-repeat scroll;
+  }
+  .ceo-agencias th, .ceo-agencias td { font-size: var(--t-mini); padding: 5px 6px; }
+  .ceo-agencias td.num, .ceo-agencias th.num { font-size: var(--t-micro); }
+  .ceo-agencias td.nome, .ceo-veiculos td.nome { max-width: 11rem; }
+  .ceo-agencias th:first-child, .ceo-agencias td:first-child {
+    position: sticky;
+    left: 0;
+    background: var(--painel);
+    border-right: 1px solid var(--linha-2);
+  }
+  .ceo-arrasta { display: block; }
+  /* Em 410 pixels nao existe tabela de sete colunas legivel. Em vez de cortar
+     o numero pela metade na borda, a tela mostra as colunas que decidem —
+     receita, despesa e o que sobra — e diz por escrito quais ficaram para a
+     tela grande. Nada some calado. */
+  .ceo-agencias > table.tab th:nth-child(2),
+  .ceo-agencias > table.tab td:nth-child(2),
+  .ceo-agencias > table.tab th:nth-child(4),
+  .ceo-agencias > table.tab td:nth-child(4),
+  .ceo-agencias > table.tab th:nth-child(5),
+  .ceo-agencias > table.tab td:nth-child(5) { display: none; }
+  .ceo-veiculos > table.tab th:nth-child(2),
+  .ceo-veiculos > table.tab td:nth-child(2),
+  .ceo-veiculos > table.tab th:nth-child(4),
+  .ceo-veiculos > table.tab td:nth-child(4),
+  .ceo-veiculos > table.tab th:nth-child(5),
+  .ceo-veiculos > table.tab td:nth-child(5),
+  .ceo-veiculos > table.tab th:nth-child(6),
+  .ceo-veiculos > table.tab td:nth-child(6) { display: none; }
+  .ceo-agencias td.nome, .ceo-veiculos td.nome { max-width: 8rem; }
+  table.tabela { font-size: var(--t-mini); }
+  table.tabela th, table.tabela td { padding: var(--e-2); }
+
+  /* Respiro menor entre blocos: no celular o espaco vira rolagem. */
+  .painel-corpo { padding: var(--e-3); }
+  .painel-corpo.sem-folga { padding: 0; }
+  .ceo-plano, .ceo-contra { padding: var(--e-3); }
+  .secao { margin-bottom: var(--e-5); }
+  .ceo-plano-frase, .ceo-linha-topo { font-size: var(--t-mini); }
+}

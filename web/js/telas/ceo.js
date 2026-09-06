@@ -482,6 +482,12 @@ function setores(d) {
     });
 
     tabela = el('div.ceo-agencias', null, [
+      /* No celular a tabela nao cabe: a coluna do nome fica ancorada e o resto
+         corre por baixo dela. Sem este aviso, meia coluna cortada na borda
+         passa por numero inteiro. */
+      el('p.ceo-arrasta', {
+        texto: 'No celular esta tabela mostra receita, resultado e margem. CT-e emitidos, frete pago e despesa lançada ficam na tela grande.',
+      }),
       el('table.tab', null, [
         el('thead', null, [el('tr', null, [
           el('th', { texto: 'Agência' }),
@@ -756,6 +762,9 @@ function veiculos(d, dias) {
   const custoParado = paradosTracao.reduce((t, l) => t + (N(l.vl_custo_identificavel) || 0), 0);
 
   return el('div.ceo-agencias.ceo-veiculos', null, [
+    el('p.ceo-arrasta', {
+      texto: 'No celular esta tabela mostra receita, despesa, sobra e margem. CT-e, combustível, manutenção e outros ficam na tela grande.',
+    }),
     el('p.ceo-linha-topo', {
       texto: `${f.numero(puxa.length)} veículo(s) puxam receita: ${f.dinheiro(recPuxa)} contra ${f.dinheiro(cusPuxa)} de despesa lançada na placa, sobra de ${f.dinheiro(recPuxa - cusPuxa)}. Outros ${f.numero(apoio.length)} — carreta, dolly, carro, moto — somam ${f.dinheiro(cusApoio)} de despesa sem receita própria.`,
     }),
@@ -1151,7 +1160,11 @@ function linhaDoDia(dados, leitura) {
      de ser a referência imediata do olhar. */
   if (agoraH !== null) {
     const dentro = agoraH >= HORA_INI && agoraH <= HORA_FIM;
-    juntar(trilho, el('div.ritmo-agora', { style: `left:${posicao(agoraH)}%` }, [
+    /* Perto do fim da régua o rótulo centrado sai da tela — no celular sobrava
+       "fora da jan" cortado na borda. Passando de 60% ele passa a crescer
+       para a esquerda, ancorado no próprio traço. */
+    const pos = posicao(agoraH);
+    juntar(trilho, el(`div.ritmo-agora${pos > 60 ? '.fim' : ''}`, { style: `left:${pos}%` }, [
       el('span.ritmo-agora-rot', {
         texto: dentro ? `agora ${f.hora(dados.agora)}` : `${f.hora(dados.agora)} · fora da janela`,
       }),
