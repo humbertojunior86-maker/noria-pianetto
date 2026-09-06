@@ -1,0 +1,75 @@
+{
+ "titulo": "Retrato da Pianetto lido no e-mail da empresa (mai a set/2026)",
+ "assunto": "empresa",
+ "origem": "outlook",
+ "caminho": "caixa humberto@pianettotransportes.com.br",
+ "data_doc": "2026-09-05",
+ "trechos": [
+  {
+   "tema": "Como a casa se comunica",
+   "texto": "256 mensagens entre 05/2026 e 09/2026, quase todas geradas por rotinas automaticas da propria empresa. Nao ha julho: a caixa tem zero mensagem no mes inteiro. Os destinos mais usados sao comercial@ (131), a caixa do CEO (81), fernanda.roseghini@ (40), faturamento@ (38), smilly.silva@ (38) e financeiro@ (38)."
+  },
+  {
+   "tema": "Filiais com caixa propria",
+   "texto": "anapolis@, chapadaodosul@, formosa@, jatai@, goianesia@, comercialgyn@, comercial.goianesia@, fertilizantes.rioverde@, fertilizantes.br@, alem de compras@, frota@, fiscal@, sgi@ e comunicados@. A caixa financeiro@calcareinsumos.com.br recebe o resumo da Calcare."
+  },
+  {
+   "tema": "Quem responde pela cobranca",
+   "texto": "Os avisos de faturamento nomeiam quatro responsaveis de carteira: Patricia Regina Cardoso Costa, Angelica Andrade Faria, Fernanda Roseghini e Lucas Antonio Gomes. Ha clientes marcados como SEM DONO, entre eles J&F Agropecuaria, Rodrigo de Oliveira Goulart e Coopercitrus."
+  },
+  {
+   "tema": "Regra de cobranca em vigor",
+   "texto": "O aviso URGENTE de faturamento roda duas vezes por dia e mede o atraso em horas uteis. Acima de 5 dias de atraso o caso vai para a diretoria; estoque acima de 15 dias vira mutirao. Em 04/09/2026: R$ 2,38 mi a faturar em 479 CT-e de 51 clientes, R$ 1,84 mi atrasado com 23 clientes na diretoria e R$ 2,80 mi de estoque antigo."
+  },
+  {
+   "tema": "Carteira e prazo",
+   "texto": "Resumo de contas a receber de 03/09/2026: carteira em aberto R$ 25,65 mi em 6.286 titulos, vencido acima de 90 dias R$ 2,18 mi (8,5% da carteira), DSO real 47,3 dias contra prazo contratado de 12,9 dias. No dia foram faturados R$ 1.048.719,00 em 211 titulos e recebidos R$ 14.065,12 em 2 baixas."
+  },
+  {
+   "tema": "Calcare Insumos Agricolas",
+   "texto": "Perimetro CNPJ base 59.260.217, filiais MS 9124, GO 8081 e MG 40203, fonte JHN.atua, regua de frete por CT-e emitido. EBITDA dos 12 meses fechados (set/25 a ago/26): -R$ 115.347,90, -0,77% da receita liquida, com 9 dos 12 meses no vermelho e receita liquida de R$ 14.978.324,58."
+  },
+  {
+   "tema": "Clientes que recebem relatorio automatico",
+   "texto": "LDC - Louis Dreyfus, Nova Agri, Amaggi, CHS Agronegocio e Agromercantil S/A tem relatorio gerado pelo Cadenzo e enviado a comercial@. Os envios de CHS, LDC e Amaggi foram devolvidos porque a caixa anapolis@ estava cheia."
+  },
+  {
+   "tema": "Sistemas em uso",
+   "texto": "Cadenzo (portal da operacao: relatorio publico por cliente, CRM comercial em kanban, checklist de frota, locais de carregamento, reembolso e viagem de agregado), KPI Frota em kpi-frota.pianettotransportes.com.br (frota leve por placa), JHN.atua como ERP, MyRP para emissao de CT-e da serie 97 (TCI/LHG) com importacao automatica diaria para o Atua, e paineis publicados em pplx.app (titulos-pianetto1, dre-calcare)."
+  },
+  {
+   "tema": "Frota leve",
+   "texto": "Cada placa tem limite mensal de combustivel por condutor e agencia, com aviso em 60% e 80% e critico acima disso. Exemplos de maio e junho de 2026: RBT6G22 VW T-Cross da matriz com Smilly Gustavo da Silva em R$ 1.596,26 contra limite de R$ 1.400,00 (114%), SCE2A23 em 159%, TJR4C17 em 149%, SXW2I51 Mobi Like com Rodrigo Silva em 113% de um limite de R$ 500,00. Estourar o limite e rotina, nao excecao."
+  },
+  {
+   "tema": "Importacao de CT-e",
+   "texto": "Rotina diaria as 15h30 compara o MyRP com o JHN.atua. A serie 97 (TCI/LHG) e lancada manualmente antes da importacao automatica e ha lacuna historica nos numeros 99, 100 e 101, que nao foram emitidos."
+  }
+ ],
+ "aprendizados": [
+  {
+   "enunciado": "A carteira de cobranca da Pianetto tem quatro donos nomeados (Patricia Regina Cardoso Costa, Angelica Andrade Faria, Fernanda Roseghini e Lucas Antonio Gomes) e existem clientes sem responsavel, marcados como SEM DONO — entre eles J&F Agropecuaria, Rodrigo de Oliveira Goulart e Coopercitrus."
+  },
+  {
+   "enunciado": "A regra de cobranca da casa mede atraso em horas uteis, manda para a diretoria o que passa de 5 dias e trata como mutirao o estoque acima de 15 dias."
+  },
+  {
+   "enunciado": "Hipotese vinda de e-mail, a confirmar no ATUA: em 03/09/2026 a carteira em aberto era de R$ 25,65 milhoes em 6.286 titulos, com DSO real de 47,3 dias contra prazo contratado de 12,9 dias."
+  },
+  {
+   "enunciado": "Hipotese vinda de e-mail, a confirmar no ATUA: a Calcare Insumos Agricolas fechou os 12 meses ate ago/2026 com EBITDA de -R$ 115.347,90, negativa em 9 dos 12 meses."
+  },
+  {
+   "enunciado": "LDC, Nova Agri, Amaggi, CHS Agronegocio e Agromercantil recebem relatorio automatico gerado pelo Cadenzo; falha na entrega desses relatorios e problema comercial, nao apenas de tecnologia."
+  },
+  {
+   "enunciado": "A frota leve e controlada por limite mensal de combustivel por placa e condutor, e o estouro do limite e recorrente — varias placas passaram de 100% em maio e junho de 2026."
+  },
+  {
+   "enunciado": "A serie 97 de CT-e (TCI/LHG) e emitida no MyRP e lancada manualmente no JHN.atua antes da importacao automatica, o que abre espaco para divergencia entre os dois sistemas."
+  },
+  {
+   "enunciado": "A caixa anapolis@pianettotransportes.com.br estava cheia e devolvendo mensagens em junho de 2026, o que derrubou o envio de relatorios de CHS, LDC e Amaggi."
+  }
+ ]
+}
