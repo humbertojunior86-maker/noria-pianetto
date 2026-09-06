@@ -1,0 +1,17 @@
+Voz gravada da abertura.
+
+Coloque aqui os arquivos fala-1.mp3 até fala-6.mp3. Cada um corresponde a uma
+frase da abertura, na ordem. Frase que tiver arquivo toca a gravação; frase sem
+arquivo sai na voz do sistema.
+
+  fala-1.mp3  Eu sou a NÓRIA, o cérebro da Pianetto.
+  fala-2.mp3  Dezesseis agentes e dois vigias que eu mesma criei.   (tem número)
+  fala-3.mp3  Leio o sistema sem escrever nada. Todo número é conferido por dois caminhos.
+  fala-4.mp3  Vinte e cinco das vinte e nove missões começaram sem você pedir.  (tem número)
+  fala-5.mp3  Mostro onde o seu dinheiro está parado antes de virar prejuízo.
+  fala-6.mp3  Me diga o objetivo.
+
+As frases 2 e 4 carregam contagem e mudam sozinhas conforme a NÓRIA cresce.
+Gravar essas duas significa que elas vão envelhecer: no dia em que ela tiver
+vinte agentes, a gravação continuará dizendo dezesseis. O recomendado é gravar
+1, 3, 5 e 6 e deixar 2 e 4 na voz do sistema.

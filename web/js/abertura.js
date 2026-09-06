@@ -450,6 +450,8 @@ export function abertura(el, aoTerminar) {
   try { vozLigada = localStorage.getItem(VOZ_CHAVE) !== 'off'; } catch {}
   let falas = [];
   let ditas = 0;
+  const gravadas = new Map();   // frases que têm voz de gente gravada
+  let tocando = null;
   let vozEscolhida = null;
   let narrouComeco = false;
 
@@ -498,6 +500,7 @@ export function abertura(el, aoTerminar) {
 
   function narrar() {
     montarFalas();
+    carregarGravadas();
   }
   narrar();
 
@@ -513,14 +516,48 @@ export function abertura(el, aoTerminar) {
     try { n = (window.speechSynthesis.getVoices() || []).length; } catch {}
     if (n > 0) {                       // lista já carregada e sem português
       semVozPt = true;
-      btVoz.textContent = 'sem voz em português';
-      btVoz.disabled = true;
+      if (!gravadas.size) {
+        btVoz.textContent = 'sem voz em português';
+        btVoz.disabled = true;
+      }
     }
     return false;
   }
 
-  function dizer(txt) {
-    if (!vozLigada || semVozPt) return;
+  /* Voz gravada de gente, quando houver.
+     Cada frase da abertura pode ter um arquivo em web/audio/fala-N.mp3. Se o
+     arquivo existir, toca a gravação; se não existir, aquela frase sai na voz
+     do sistema. Isso resolve o problema que voz gravada sempre traz: o número
+     muda e o áudio não. As frases sem número — quem ela é, o que faz — podem
+     ser gravadas uma vez e valer para sempre; as que carregam contagem ficam
+     na voz sintética, que se refaz sozinha a cada abertura. */
+  function tocarGravada(i) {
+    const a = gravadas.get(i);
+    if (!a) return false;
+    try {
+      a.currentTime = 0;
+      const pr = a.play();
+      if (pr && pr.catch) pr.catch(() => {});
+      tocando = a;
+      narrouComeco = true;
+      return true;
+    } catch { return false; }
+  }
+
+  function carregarGravadas() {
+    falas.forEach((f, i) => {
+      if (gravadas.has(i)) return;
+      const a = new Audio(`audio/fala-${i + 1}.mp3`);
+      a.preload = 'auto';
+      a.addEventListener('canplaythrough', () => gravadas.set(i, a), { once: true });
+      a.addEventListener('error', () => { /* sem gravação: fica a voz do sistema */ });
+    });
+  }
+
+  function dizer(txt, i) {
+    if (!vozLigada) return;
+    if (i != null && tocarGravada(i)) return;
+    if (semVozPt) return;
     if (!conferirVoz()) return;
     let u;
     try { u = new SpeechSynthesisUtterance(txt); } catch { return; }
@@ -537,6 +574,7 @@ export function abertura(el, aoTerminar) {
 
   function calarVoz() {
     try { window.speechSynthesis.cancel(); } catch {}
+    if (tocando) { try { tocando.pause(); } catch {} tocando = null; }
   }
 
   /* Botão de voz: canto de cima, discreto. Alguns navegadores só deixam falar
@@ -553,13 +591,13 @@ export function abertura(el, aoTerminar) {
     try { localStorage.setItem(VOZ_CHAVE, vozLigada ? 'on' : 'off'); } catch {}
     btVoz.textContent = vozLigada ? 'voz ligada' : 'voz desligada';
     if (!vozLigada) calarVoz();
-    else if (falas[0]) dizer(falas[0].txt);
+    else if (falas[0]) dizer(falas[0].txt, 0);
   });
   el.appendChild(btVoz);
 
   function destravarVoz() {
     if (!vozLigada || narrouComeco || ditas === 0) return;
-    dizer(falas[0].txt);
+    dizer(falas[0].txt, 0);
   }
   window.addEventListener('pointerdown', destravarVoz, { once: true });
   window.addEventListener('keydown', destravarVoz, { once: true });
@@ -734,7 +772,7 @@ export function abertura(el, aoTerminar) {
     /* A fala anda no mesmo relógio do desenho: a frase sobre a equipe sai
        quando os agentes estão acendendo, não antes nem depois. */
     while (ditas < falas.length && t >= falas[ditas].t) {
-      dizer(falas[ditas].txt);
+      dizer(falas[ditas].txt, ditas);
       ditas++;
     }
 
