@@ -41,6 +41,12 @@ def _senha(p: str) -> str:
 # ainda não consegue fazer.
 ROTAS_DO_SAGUAO = {"/api/eu", "/api/saguao", "/api/agentes"}
 
+# A ponte é a conta que o carteiro usa: ela leva aviso para fora e traz
+# demanda para dentro. Não é o CEO com outro nome — ela não alcança número
+# do ERP, missão, aprovação nem agente. Se o token dela vazar, o estrago
+# possível é o tamanho da fila de avisos, e nada mais.
+PREFIXOS_DA_PONTE = ("/api/eu", "/api/avisos", "/api/demandas")
+
 
 def sessao(request: Request, authorization: str = Header(default="")) -> dict:
     token = authorization.replace("Bearer ", "").strip()
@@ -52,6 +58,8 @@ def sessao(request: Request, authorization: str = Header(default="")) -> dict:
     u = bd.linha("SELECT * FROM usuario WHERE id=?", (s["usuario_id"],))
     if u["papel"] == "saguao" and request.url.path not in ROTAS_DO_SAGUAO:
         raise HTTPException(403, "o painel do saguão não tem acesso a esta área")
+    if u["papel"] == "ponte" and not request.url.path.startswith(PREFIXOS_DA_PONTE):
+        raise HTTPException(403, "a ponte só alcança a fila de avisos e a caixa de demandas")
     return {"usuario": u, "empresa_id": s["empresa_id"]}
 
 
@@ -775,6 +783,102 @@ def saguao(s: dict = Depends(sessao)):
                 (emp,)),
         },
     }
+
+
+# --------------------------------------------------------- avisos e demandas
+# A NÓRIA decide o que merece sair daqui; quem entrega é trocável. Estas
+# rotas são o balcão: de um lado a fila do que ela quer contar, do outro a
+# caixa do que chegou de fora pedindo resposta.
+@app.get("/api/avisos")
+def listar_avisos(s: dict = Depends(sessao), estado: str = "pendente",
+                  limite: int = Query(50, le=200)):
+    return {"avisos": bd.linhas(
+        "SELECT * FROM aviso WHERE empresa_id=? AND estado=? "
+        "ORDER BY CASE gravidade WHEN 'alta' THEN 0 ELSE 1 END, id "
+        "LIMIT ?", (s["empresa_id"], estado, limite))}
+
+
+@app.post("/api/avisos/{aid}/entregue")
+def aviso_entregue(aid: int, dados: dict = Body(default={}),
+                   s: dict = Depends(sessao)):
+    a = bd.linha("SELECT * FROM aviso WHERE id=? AND empresa_id=?",
+                 (aid, s["empresa_id"]))
+    if not a:
+        raise HTTPException(404, "aviso não encontrado")
+    bd.executar("UPDATE aviso SET estado=?, canal=?, referencia=?, entregue_em=? "
+                "WHERE id=?", (dados.get("estado") or "entregue",
+                               dados.get("canal"), dados.get("referencia"),
+                               bd.agora(), aid))
+    return {"ok": True, "id": aid}
+
+
+@app.post("/api/demandas")
+def receber_demandas(dados: dict = Body(...), s: dict = Depends(sessao)):
+    """Entrada de mensagens vindas de fora. Repetida não entra duas vezes:
+    o id da origem é único, então a ponte pode rodar quantas vezes quiser."""
+    emp = s["empresa_id"]
+    novas, repetidas = [], 0
+    for m in (dados.get("mensagens") or []):
+        ext = str(m.get("externo_id") or "").strip()
+        if not ext:
+            continue
+        if bd.linha("SELECT id FROM demanda WHERE canal=? AND externo_id=?",
+                    (m.get("canal") or "outlook", ext)):
+            repetidas += 1
+            continue
+        novas.append(bd.inserir("demanda", {
+            "empresa_id": emp, "canal": m.get("canal") or "outlook",
+            "externo_id": ext, "conversa_id": m.get("conversa_id"),
+            "de": m.get("de"), "para": m.get("para"),
+            "assunto": m.get("assunto"), "trecho": m.get("trecho"),
+            "recebida_em": m.get("recebida_em"),
+            "classe": m.get("classe") or "ruido",
+            "assunto_operacional": m.get("assunto_operacional"),
+            "quem_responde": m.get("quem_responde"), "prazo": m.get("prazo"),
+            "estado": "aberta", "link": m.get("link"),
+            "criada_em": bd.agora()}))
+    return {"recebidas": len(novas), "repetidas": repetidas, "ids": novas}
+
+
+@app.get("/api/demandas")
+def listar_demandas(s: dict = Depends(sessao), estado: str | None = None,
+                    classe: str | None = None, limite: int = Query(60, le=200)):
+    sql = "SELECT * FROM demanda WHERE empresa_id=?"
+    a: list = [s["empresa_id"]]
+    if estado:
+        sql += " AND estado=?"
+        a.append(estado)
+    if classe:
+        sql += " AND classe=?"
+        a.append(classe)
+    sql += " ORDER BY recebida_em DESC, id DESC LIMIT ?"
+    a.append(limite)
+    return {"demandas": bd.linhas(sql, tuple(a))}
+
+
+@app.post("/api/demandas/{did}/missao")
+def demanda_vira_missao(did: int, dados: dict = Body(default={}),
+                        s: dict = Depends(sessao)):
+    """Uma pergunta que chegou de fora vira trabalho de agente. A demanda
+    guarda o número da missão: assim a resposta tem de onde vir, e ninguém
+    responde cliente de memória."""
+    d = bd.linha("SELECT * FROM demanda WHERE id=? AND empresa_id=?",
+                 (did, s["empresa_id"]))
+    if not d:
+        raise HTTPException(404, "demanda não encontrada")
+    if d["missao_id"]:
+        return {"ok": True, "missao_id": d["missao_id"], "ja_existia": True}
+    objetivo = (dados.get("objetivo") or "").strip() or (
+        f"Levantar no ATUA o que responde: {d['assunto'] or d['trecho'] or ''}")
+    ctx = dict(dados.get("contexto") or {})
+    ctx.setdefault("demanda_id", did)
+    ctx.setdefault("chave", f"demanda:{did}")
+    mid = orq.abrir_missao(s["empresa_id"], objetivo, contexto=ctx,
+                           origem="demanda", prioridade=dados.get("prioridade")
+                           or "alta")
+    bd.executar("UPDATE demanda SET estado='em_missao', missao_id=? WHERE id=?",
+                (mid, did))
+    return {"ok": True, "missao_id": mid}
 
 
 # ------------------------------------------------------------------- estático

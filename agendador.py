@@ -19,6 +19,7 @@ from ferramentas import atua, base as fb      # noqa: E402,F401
 from nucleo import bd                         # noqa: E402
 from nucleo import orquestrador as orq        # noqa: E402
 import sentinela                              # noqa: E402
+from nucleo import avisos                     # noqa: E402
 
 log = logging.getLogger("noria.agendador")
 
@@ -274,6 +275,13 @@ def main() -> None:
                 sentinela.rodada()
             except Exception:  # noqa: BLE001
                 log.exception("erro na sentinela")
+            # Depois de olhar a empresa, decide o que disso merece sair daqui.
+            # A fila enche mesmo sem ninguém logado: a NÓRIA não fala só
+            # quando perguntam.
+            try:
+                avisos.varrer(EMPRESA)
+            except Exception:  # noqa: BLE001
+                log.exception("erro ao varrer avisos")
             proxima_vigilia = time.monotonic() + INTERVALO_VIGILIA
         time.sleep(60)
 
@@ -286,5 +294,8 @@ if __name__ == "__main__":
     elif len(sys.argv) > 1 and sys.argv[1] == "vigiar":
         bd.migrar()
         print("sentinela:", sentinela.rodada())
+    elif len(sys.argv) > 1 and sys.argv[1] == "avisar":
+        bd.migrar()
+        print("avisos novos:", avisos.varrer(EMPRESA))
     else:
         main()

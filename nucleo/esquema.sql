@@ -411,3 +411,62 @@ CREATE TABLE IF NOT EXISTS marcador (
   valor         TEXT NOT NULL,        -- json
   atualizado_em TEXT NOT NULL
 );
+
+-- -------------------------------------------------------------------- aviso
+-- Fila de avisos que a NÓRIA quer levar para fora — hoje por e-mail. Ela é
+-- do sistema, não do carteiro: o cérebro decide o que merece sair daqui e
+-- registra; quem entrega apenas marca o que já saiu. Trocar o Outlook por
+-- WhatsApp amanhã não muda uma linha do que está acima desta tabela.
+-- A chave existe para o mesmo achado não virar e-mail todo dia: enquanto o
+-- número não muda, é o mesmo aviso. Quando muda, é outro, e sai de novo.
+CREATE TABLE IF NOT EXISTS aviso (
+  id            INTEGER PRIMARY KEY,
+  empresa_id    INTEGER NOT NULL REFERENCES empresa(id),
+  entrega_id    INTEGER REFERENCES entrega(id),
+  missao_id     INTEGER REFERENCES missao(id),
+  agente_id     TEXT,
+  agente_nome   TEXT,
+  especie       TEXT NOT NULL,   -- dinheiro_parado | vermelho | risco | divergencia | travado
+  gravidade     TEXT NOT NULL,   -- alta | media
+  titulo        TEXT NOT NULL,
+  texto         TEXT NOT NULL,
+  valor         REAL,
+  quantidade    INTEGER,
+  chave         TEXT NOT NULL UNIQUE,
+  estado        TEXT NOT NULL DEFAULT 'pendente',  -- pendente | entregue | dispensado
+  canal         TEXT,
+  referencia    TEXT,
+  criado_em     TEXT NOT NULL,
+  entregue_em   TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_aviso_fila ON aviso(empresa_id, estado, id DESC);
+
+-- ------------------------------------------------------------------ demanda
+-- O que chegou de fora pedindo resposta: e-mail de cliente, cobrança da
+-- equipe, aviso de outro sistema. A NÓRIA guarda o pedido, não a caixa de
+-- e-mail — corpo inteiro fica no Outlook, aqui mora o suficiente para o
+-- cérebro decidir se aquilo vira missão.
+-- `externo_id` é o id da mensagem na origem: é ele que impede a mesma
+-- mensagem de entrar duas vezes quando a ponte roda de novo.
+CREATE TABLE IF NOT EXISTS demanda (
+  id            INTEGER PRIMARY KEY,
+  empresa_id    INTEGER NOT NULL REFERENCES empresa(id),
+  canal         TEXT NOT NULL,      -- outlook | whatsapp | manual
+  externo_id    TEXT NOT NULL,
+  conversa_id   TEXT,
+  de            TEXT,
+  para          TEXT,
+  assunto       TEXT,
+  trecho        TEXT,
+  recebida_em   TEXT,
+  classe        TEXT NOT NULL,      -- cliente | equipe | sistema | ruido
+  assunto_operacional TEXT,         -- do que trata, quando dá para dizer
+  quem_responde TEXT,               -- área da casa que deve responder
+  prazo         TEXT,
+  estado        TEXT NOT NULL DEFAULT 'aberta',  -- aberta | em_missao | respondida | dispensada
+  missao_id     INTEGER REFERENCES missao(id),
+  link          TEXT,
+  criada_em     TEXT NOT NULL,
+  UNIQUE(canal, externo_id)
+);
+CREATE INDEX IF NOT EXISTS ix_demanda_fila ON demanda(empresa_id, estado, recebida_em DESC);

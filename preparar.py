@@ -47,6 +47,18 @@ def main() -> None:
             "senha_hash": senha(os.environ.get("NORIA_SENHA_SAGUAO", "saguao")),
             "papel": "saguao", "ativo": 1, "criado_em": bd.agora()})
 
+    # Ponte: a conta que o carteiro usa para levar aviso para fora e trazer
+    # demanda para dentro. Só alcança a fila de avisos e a caixa de demandas
+    # (ver PREFIXOS_DA_PONTE em api/main.py). Ela existe para que o canal de
+    # e-mail não precise da senha do CEO.
+    if not bd.linha("SELECT id FROM usuario WHERE email=?",
+                    ("ponte@pianetto.com.br",)):
+        bd.inserir("usuario", {
+            "empresa_id": EMPRESA_ID, "nome": "Ponte de mensagens",
+            "email": "ponte@pianetto.com.br",
+            "senha_hash": senha(os.environ.get("NORIA_SENHA_PONTE", "ponte-noria")),
+            "papel": "ponte", "ativo": 1, "criado_em": bd.agora()})
+
     # Alçada: sem isto, nada de impacto executa sozinho.
     if not bd.linha("SELECT id FROM alcada WHERE empresa_id=?", (EMPRESA_ID,)):
         for tipo, ate, papel, auto in [
