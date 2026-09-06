@@ -343,8 +343,7 @@ export function abertura(el, aoTerminar) {
           if (!aplicarRetrato(d)) return;
           try { localStorage.setItem('noria.retrato', JSON.stringify(d)); } catch {}
           montarRoteiro();
-          narrar();
-        })
+          })
         .catch(() => { /* silencioso: a abertura não depende disso */ });
     }
   } catch { /* storage bloqueado */ }
@@ -441,137 +440,77 @@ export function abertura(el, aoTerminar) {
   const ro = new ResizeObserver(medir);
   ro.observe(el);
 
-  /* ----- A voz dela ----------------------------------------------------- */
-  /* Voz do próprio navegador, de propósito. Áudio gravado ficaria bonito hoje e
-     mentiria amanhã: no dia em que ela criar o décimo vigia, o arquivo continua
-     dizendo dois. Aqui a fala é montada das mesmas contagens que desenham a
-     tela — evolui junto, sem ninguém regravar nada. Voz feminina em português
-     do Brasil quando a máquina tiver uma; se não tiver, ela fica em silêncio e
-     o texto na tela conta a mesma história. */
+  /* ----- A voz dele ----------------------------------------------------- */
+  /* Só gravação. A voz sintética do navegador foi tirada de propósito: cada
+     máquina tem uma voz diferente instalada, então o mesmo sistema falava com
+     um timbre no computador e outro no celular, nenhum deles o que foi
+     escolhido. Aqui a fala vem de quatro arquivos em web/audio, iguais em
+     qualquer aparelho. Arquivo que faltar vira silêncio — silêncio é honesto,
+     voz trocada não é.
+
+     Nenhuma das frases carrega número: gravação com contagem dentro envelhece
+     no dia seguinte. Os números vão escritos no log ao lado, que se refaz a
+     cada carregamento. */
   const VOZ_CHAVE = 'noria.voz';
   let vozLigada = true;
   try { vozLigada = localStorage.getItem(VOZ_CHAVE) !== 'off'; } catch {}
   let falas = [];
   let ditas = 0;
-  const gravadas = new Map();   // frases que têm voz de gente gravada
+  let tAtual = 0;                 // onde a linha do tempo está agora
   let tocando = null;
-  let vozEscolhida = null;
-  let narrouComeco = false;
-
-  /* Voz masculina, para casar com a gravação de estúdio das frases fixas.
-     Metade da abertura é arquivo, metade é o navegador falando os números do
-     dia — se as duas metades tiverem gênero diferente, parecem duas pessoas
-     discutindo, e a apresentação perde o dono. */
-  const MASCULINAS = /(daniel|ricardo|felipe|ant[oô]nio|antonio|jo[aã]o|paulo|fabio|f[aá]bio|julio|j[uú]lio|nicolau|valerio|val[eé]rio|male|homem|masculin)/i;
-
-  function escolherVoz() {
-    let vs = [];
-    try { vs = window.speechSynthesis.getVoices() || []; } catch { return null; }
-    const br = vs.filter((v) => /pt[-_]?BR/i.test(v.lang || ''));
-    const pt = br.length ? br : vs.filter((v) => /^pt/i.test(v.lang || ''));
-    if (!pt.length) return null;
-    return pt.find((v) => MASCULINAS.test(v.name || ''))
-      || pt.find((v) => /google/i.test(v.name || ''))
-      || pt[0];
-  }
+  let bloqueado = false;          // o navegador exigiu um toque antes de soltar som
+  const gravadas = new Map();
 
   function montarFalas() {
-    const f = [];
-    /* Quatro frases, uma ideia em cada, nos intervalos exatos das gravações em
-       web/audio. Os números do dia não entram na fala: eles mudam toda hora e
-       vão escritos no log ao lado, onde dá para conferir com calma. A voz diz
-       o que ele é; a tela diz quanto ele já fez. */
-    f.push({ t: 600,   txt: 'Eu sou o NÓRIA, o cérebro da Pianetto.' });
-    f.push({ t: 3750,  txt: 'Leio o sistema sem escrever nada. Todo número tem contraprova.' });
-    f.push({ t: 8500,  txt: 'Mostro seu dinheiro parado antes de virar prejuízo.' });
-    f.push({ t: 11900, txt: 'Me diga o objetivo.' });
-
-    falas = f;
+    falas = [
+      { t: 600,   arq: 'audio/fala-1.mp3' },   // Eu sou o NÓRIA, o cérebro da Pianetto.
+      { t: 3750,  arq: 'audio/fala-2.mp3' },   // Leio o sistema sem escrever nada. Todo número tem contraprova.
+      { t: 8500,  arq: 'audio/fala-3.mp3' },   // Mostro seu dinheiro parado antes de virar prejuízo.
+      { t: 11900, arq: 'audio/fala-4.mp3' }    // Me diga o objetivo.
+    ];
     ditas = 0;
   }
+  montarFalas();
 
-  function narrar() {
-    montarFalas();
-    carregarGravadas();
-  }
-  narrar();
+  /* Os arquivos entram no mapa na hora em que são criados, não quando terminam
+     de baixar. A primeira frase começa aos 600 ms — esperar o download completo
+     fazia essa frase perder a vez e cair na voz do sistema, que era justamente
+     o problema. Só sai do mapa o arquivo que der erro de verdade. */
+  falas.forEach((f, i) => {
+    const a = new Audio(f.arq);
+    a.preload = 'auto';
+    a.addEventListener('error', () => gravadas.delete(i));
+    gravadas.set(i, a);
+  });
 
-  /* Nem toda máquina tem voz em português instalada. Falar português com voz
-     inglesa soa pior que silêncio — nesse caso ela se cala e o botão diz por
-     quê, em vez de fingir que está falando. */
-  let semVozPt = false;
-  function conferirVoz() {
-    if (vozEscolhida) return true;
-    vozEscolhida = escolherVoz();
-    if (vozEscolhida) { semVozPt = false; return true; }
-    let n = 0;
-    try { n = (window.speechSynthesis.getVoices() || []).length; } catch {}
-    if (n > 0) {                       // lista já carregada e sem português
-      semVozPt = true;
-      if (!gravadas.size) {
-        btVoz.textContent = 'sem voz em português';
-        btVoz.disabled = true;
-      }
-    }
-    return false;
-  }
-
-  /* Voz gravada de gente, quando houver.
-     Cada frase da abertura pode ter um arquivo em web/audio/fala-N.mp3. Se o
-     arquivo existir, toca a gravação; se não existir, aquela frase sai na voz
-     do sistema. Isso resolve o problema que voz gravada sempre traz: o número
-     muda e o áudio não. As frases sem número — quem ela é, o que faz — podem
-     ser gravadas uma vez e valer para sempre; as que carregam contagem ficam
-     na voz sintética, que se refaz sozinha a cada abertura. */
-  function tocarGravada(i) {
+  function dizer(i) {
+    if (!vozLigada) return;
     const a = gravadas.get(i);
-    if (!a) return false;
+    if (!a) return;
+    calarVoz();
     try {
       a.currentTime = 0;
       const pr = a.play();
-      if (pr && pr.catch) pr.catch(() => {});
       tocando = a;
-      narrouComeco = true;
-      return true;
-    } catch { return false; }
-  }
-
-  function carregarGravadas() {
-    falas.forEach((f, i) => {
-      if (gravadas.has(i)) return;
-      const a = new Audio(`audio/fala-${i + 1}.mp3`);
-      a.preload = 'auto';
-      a.addEventListener('canplaythrough', () => gravadas.set(i, a), { once: true });
-      a.addEventListener('error', () => { /* sem gravação: fica a voz do sistema */ });
-    });
-  }
-
-  function dizer(txt, i) {
-    if (!vozLigada) return;
-    if (i != null && tocarGravada(i)) return;
-    if (semVozPt) return;
-    if (!conferirVoz()) return;
-    let u;
-    try { u = new SpeechSynthesisUtterance(txt); } catch { return; }
-    u.voice = vozEscolhida;
-    u.lang = (vozEscolhida && vozEscolhida.lang) || 'pt-BR';
-    /* Grave e um pouco mecânica de propósito. Voz feminina, mas sem doçura de
-       atendente: ela é um sistema de apuração, não uma recepcionista. O tom
-       baixo e o compasso pausado dão o peso de máquina que pensa. */
-    u.rate = 0.88;
-    u.pitch = 0.72;
-    u.onstart = () => { narrouComeco = true; };
-    try { window.speechSynthesis.speak(u); } catch {}
+      if (pr && pr.catch) {
+        pr.catch(() => { bloqueado = true; avisarToque(); });
+      }
+    } catch { bloqueado = true; avisarToque(); }
   }
 
   function calarVoz() {
-    try { window.speechSynthesis.cancel(); } catch {}
     if (tocando) { try { tocando.pause(); } catch {} tocando = null; }
   }
 
-  /* Botão de voz: canto de cima, discreto. Alguns navegadores só deixam falar
-     depois de um toque — se em dois segundos nada saiu, o botão pisca uma vez
-     e o primeiro toque em qualquer lugar solta a voz do começo. */
+  /* Qual frase deveria estar no ar neste instante. Serve para retomar do ponto
+     certo quando o toque libera o som no meio da abertura, em vez de voltar
+     para a primeira frase com o desenho já adiantado. */
+  function falaDaVez() {
+    let i = -1;
+    for (let k = 0; k < falas.length; k++) if (tAtual >= falas[k].t) i = k;
+    return i;
+  }
+
   const btVoz = document.createElement('button');
   btVoz.type = 'button';
   btVoz.className = 'abertura-voz';
@@ -581,18 +520,34 @@ export function abertura(el, aoTerminar) {
     ev.stopPropagation();
     vozLigada = !vozLigada;
     try { localStorage.setItem(VOZ_CHAVE, vozLigada ? 'on' : 'off'); } catch {}
+    btVoz.classList.remove('abertura-voz-toque');
     btVoz.textContent = vozLigada ? 'voz ligada' : 'voz desligada';
-    if (!vozLigada) calarVoz();
-    else if (falas[0]) dizer(falas[0].txt, 0);
+    if (!vozLigada) { calarVoz(); return; }
+    bloqueado = false;
+    const i = falaDaVez();
+    if (i >= 0) dizer(i);
   });
   el.appendChild(btVoz);
 
-  function destravarVoz() {
-    if (!vozLigada || narrouComeco || ditas === 0) return;
-    dizer(falas[0].txt, 0);
+  function avisarToque() {
+    if (!vozLigada) return;
+    btVoz.textContent = 'toque para ouvir';
+    btVoz.classList.add('abertura-voz-toque');
   }
-  window.addEventListener('pointerdown', destravarVoz, { once: true });
-  window.addEventListener('keydown', destravarVoz, { once: true });
+
+  /* Navegador nenhum solta som antes de a pessoa tocar na tela. Quando isso
+     acontece, o primeiro toque em qualquer lugar destranca e a voz entra na
+     frase certa do momento — não do começo. */
+  function destravarVoz() {
+    if (!vozLigada || !bloqueado) return;
+    bloqueado = false;
+    btVoz.classList.remove('abertura-voz-toque');
+    btVoz.textContent = 'voz ligada';
+    const i = falaDaVez();
+    if (i >= 0) dizer(i);
+  }
+  window.addEventListener('pointerdown', destravarVoz);
+  window.addEventListener('keydown', destravarVoz);
 
   /* ----- Roteiro do log ------------------------------------------------- */
   function montarRoteiro() {
@@ -763,8 +718,9 @@ export function abertura(el, aoTerminar) {
     }
     /* A fala anda no mesmo relógio do desenho: a frase sobre a equipe sai
        quando os agentes estão acendendo, não antes nem depois. */
+    tAtual = t;
     while (ditas < falas.length && t >= falas[ditas].t) {
-      dizer(falas[ditas].txt, ditas);
+      dizer(ditas);
       ditas++;
     }
 

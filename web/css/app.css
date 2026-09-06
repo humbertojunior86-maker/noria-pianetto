@@ -2572,3 +2572,18 @@ body.modo-saguao {
 .abertura-voz:hover { color: var(--acento); border-color: var(--acento); opacity: 1; }
 .abertura-voz[disabled] { cursor: default; opacity: .35; }
 @media (max-width: 700px) { .abertura-voz { bottom: 26px; right: 12px; } }
+
+/* Botão da voz quando o navegador exige um toque para soltar som. Pisca devagar
+   até alguém tocar; parar de piscar é a confirmação de que a voz saiu. */
+.abertura-voz-toque {
+  color: var(--acento);
+  border-color: color-mix(in srgb, var(--acento) 55%, transparent);
+  animation: aberturaVozPisca 1.6s ease-in-out infinite;
+}
+@keyframes aberturaVozPisca {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .abertura-voz-toque { animation: none; opacity: 1; }
+}
