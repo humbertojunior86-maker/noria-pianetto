@@ -1189,6 +1189,94 @@ def entregaveis(s: dict = Depends(sessao)):
 
 
 
+# -------------------------------------------------------------------- retrato
+# O que a NÓRIA É hoje, num JSON só. A abertura desenha a partir daqui.
+#
+# Antes a abertura carregava uma lista de quinze agentes escrita à mão dentro do
+# JavaScript. Ela cresceu, virou dezesseis, passou a criar vigias sozinha — e a
+# tela de entrada continuava contando a mesma história de meses atrás. Retrato
+# que não acompanha o retratado é retrato de outra pessoa. Daqui em diante a
+# abertura não sabe quantos agentes existem: ela pergunta.
+@app.get("/api/retrato")
+def retrato(s: dict = Depends(sessao)):
+    eid = s["usuario"]["empresa_id"]
+
+    equipe = []
+    for d in ar.todos():
+        sit, _lim = d.situacao()
+        equipe.append({"id": d.id, "nome": d.nome, "area": d.area,
+                       "situacao": sit, "especie": "agente",
+                       "audita": d.auditor is not None})
+
+    # Os vigias entram na mesma roda dos agentes de código: quem vigia a margem
+    # todo dia é equipe, não anexo. O que muda é a etiqueta.
+    for v in bd.linhas("SELECT id, nome, area, estado FROM vigia WHERE "
+                       "empresa_id=? AND estado IN ('observacao','ativo') "
+                       "ORDER BY id", (eid,)):
+        equipe.append({"id": f"vigia.{v['id']}", "nome": v["nome"],
+                       "area": v["area"], "especie": "vigia",
+                       "situacao": "habilitado" if v["estado"] == "ativo"
+                       else "observacao", "audita": False})
+
+    def n(sql, args=()):
+        try:
+            return int(bd.linha(sql, args)["n"] or 0)
+        except Exception:
+            return 0
+
+    numeros = {
+        "agentes": sum(1 for a in equipe if a["especie"] == "agente"),
+        "vigias": sum(1 for a in equipe if a["especie"] == "vigia"),
+        "habilitados": sum(1 for a in equipe if a["situacao"] == "habilitado"),
+        "areas": len({a["area"] for a in equipe if a["area"]}),
+        "pares": sum(1 for a in equipe if a["audita"]),
+        "missoes": n("SELECT COUNT(*) n FROM missao WHERE empresa_id=?", (eid,)),
+        "missoes_dela": n("SELECT COUNT(*) n FROM missao WHERE empresa_id=? AND "
+                          "(origem IS NULL OR origem<>'humano')", (eid,)),
+        "achados": n("SELECT COUNT(*) n FROM aviso WHERE empresa_id=?", (eid,)),
+        "evidencias": n("SELECT COUNT(*) n FROM evidencia WHERE empresa_id=?", (eid,)),
+        "hipoteses": n("SELECT COUNT(*) n FROM hipotese"),
+        "confirmadas": n("SELECT COUNT(*) n FROM hipotese WHERE estado='confirmada'"),
+        "derrubadas": n("SELECT COUNT(*) n FROM hipotese WHERE estado='derrubada'"),
+        "entregaveis": n("SELECT COUNT(*) n FROM entregavel WHERE empresa_id=?", (eid,)),
+        "integracoes": n("SELECT COUNT(*) n FROM integracao WHERE empresa_id=?", (eid,)),
+    }
+
+    # Dinheiro achado: só o que tem valor apurado no banco. Nunca estimativa.
+    try:
+        numeros["dinheiro_achado"] = float(bd.linha(
+            "SELECT COALESCE(SUM(valor),0) v FROM aviso WHERE empresa_id=? "
+            "AND valor IS NOT NULL", (eid,))["v"] or 0.0)
+    except Exception:
+        numeros["dinheiro_achado"] = 0.0
+
+    try:
+        nasc = bd.linha("SELECT MIN(criado_em) d FROM evento")["d"]
+    except Exception:
+        nasc = None
+
+    # Marcos: cada um só entra quando o número que o sustenta existe de verdade.
+    # É assim que a abertura muda sozinha — não porque alguém reescreveu a
+    # frase, mas porque a NÓRIA passou a caber numa frase maior.
+    marcos = []
+    if numeros["agentes"]:
+        marcos.append({"chave": "equipe", "peso": 1})
+    if numeros["pares"]:
+        marcos.append({"chave": "contraprova", "peso": 2})
+    if numeros["hipoteses"]:
+        marcos.append({"chave": "pensamento", "peso": 3})
+    if numeros["missoes_dela"]:
+        marcos.append({"chave": "autonomia", "peso": 4})
+    if numeros["vigias"]:
+        marcos.append({"chave": "cria_agentes", "peso": 5})
+    if numeros["entregaveis"]:
+        marcos.append({"chave": "publica", "peso": 6})
+
+    return {"equipe": equipe, "numeros": numeros, "marcos": marcos,
+            "desde": nasc, "agora": bd.agora()}
+
+
+
 # ------------------------------------------------------------------- estático
 WEB = RAIZ / "web"
 if WEB.is_dir():

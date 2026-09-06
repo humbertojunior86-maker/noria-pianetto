@@ -2556,3 +2556,19 @@ body.modo-saguao {
 .ceo-ent-sec-t { font-size: 13px; font-weight: 600; color: var(--tinta); }
 .ceo-ent-sec-v { font-size: 13px; color: var(--acento); margin-left: 10px; }
 .ceo-ent-sec-x { margin: 4px 0 0; font-size: 12px; color: var(--tinta-2); }
+
+/* ------------------------------------------------------ a voz na abertura */
+.abertura-voz {
+  /* embaixo à direita: em cima disputava espaço com o 'Pular abertura' */
+  position: absolute; bottom: 34px; right: 20px; z-index: 6;
+  padding: 6px 12px; border-radius: 999px;
+  font-family: var(--mono, monospace); font-size: 11px; letter-spacing: .06em;
+  text-transform: lowercase; cursor: pointer;
+  color: var(--tinta-3); background: rgba(0, 0, 0, .28);
+  border: 1px solid var(--linha-2);
+  transition: color .2s ease, border-color .2s ease, opacity .2s ease;
+  opacity: .55;
+}
+.abertura-voz:hover { color: var(--acento); border-color: var(--acento); opacity: 1; }
+.abertura-voz[disabled] { cursor: default; opacity: .35; }
+@media (max-width: 700px) { .abertura-voz { bottom: 26px; right: 12px; } }

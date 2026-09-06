@@ -102,11 +102,20 @@ const PARES = [
 /* ----- Tempos do roteiro (ms) ------------------------------------------ */
 const T_MALHA = 2400;                    // cérebro totalmente formado
 const T_AG = 2150;                       // primeiro agente acende
-const PASSO_AG = 235;                    // intervalo entre agentes
-const T_AG_FIM = T_AG + PASSO_AG * (AGENTES.length - 1) + 420;
+/* O intervalo entre agentes deixou de ser fixo. A equipe cresce — eram quinze,
+   hoje são dezesseis mais os vigias que ela cria sozinha — e a abertura não
+   pode ficar mais longa a cada nascimento. O ato dura sempre o mesmo tempo; o
+   que muda é o compasso, apertado ou folgado conforme quantos há para acender. */
+const PASSO_AG_REF = 235;                // compasso com a equipe de referência
+const N_AG_REF = 15;                     // equipe de quando a abertura nasceu
+const T_AG_FIM = T_AG + PASSO_AG_REF * (N_AG_REF - 1) + 420;
+let PASSO_AG = PASSO_AG_REF;
+function recompassar(n) {
+  PASSO_AG = (T_AG_FIM - 420 - T_AG) / Math.max(1, n - 1);
+}
 const T_FAM = T_AG_FIM + 240;            // as áreas se fecham entre si
 const PASSO_FAM = 300;
-const T_FAM_FIM = T_FAM + PASSO_FAM * FAMILIAS_PADRAO.length + 200;
+const T_FAM_FIM = T_FAM + PASSO_FAM * 5 + 200;   // cinco áreas de referência
 const T_PAR = T_FAM_FIM + 180;           // primeiro par de contraprova
 const PASSO_PAR = 560;
 const T_PAR_FIM = T_PAR + PASSO_PAR * PARES.length;
@@ -117,6 +126,10 @@ const T_FIM = T_ATO4 + 2600;
 const MAX_LINHAS = 7;
 
 /* ----- Utilidades ------------------------------------------------------- */
+/* Concordância. Um sistema que se apresenta dizendo '1 publicações' já perdeu
+   metade da autoridade que a abertura inteira tentou construir. */
+const pl = (n, um, muitos) => `${n} ${n === 1 ? um : muitos}`;
+const cap = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const facil = (x) => 1 - Math.pow(1 - clamp(x, 0, 1), 3);          // easeOutCubic
 const facilInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
@@ -265,30 +278,69 @@ export function abertura(el, aoTerminar) {
   el.appendChild(barra);
   const barraInterna = barra.querySelector('i');
 
-  /* ----- Cadastro vivo, se a API responder a tempo ---------------------- */
-  let agentes = AGENTES.map((a) => ({ ...a, situacao: null }));
+  /* ----- Retrato vivo: quem ela é HOJE ---------------------------------- */
+  /* A abertura não sabe mais quantos agentes existem. Ela pergunta.
+     Três camadas, nessa ordem: a última foto guardada nesta máquina (para
+     nascer certa antes de qualquer rede), o retrato que a API devolve agora
+     (que corrige a foto e fica guardado para a próxima), e só em último caso o
+     retrato de fábrica lá em cima. Um sistema que fica mais inteligente e
+     continua se apresentando com o número de meses atrás está mentindo sobre
+     si mesmo. */
+  let retrato = null;
+  let agentes = AGENTES.map((a) => ({ ...a, situacao: null, especie: 'agente' }));
   let resumoEquipe = null;
+
+  function aplicarRetrato(d) {
+    if (!d || !Array.isArray(d.equipe) || !d.equipe.length) return false;
+    retrato = d;
+    /* A área do banco é fina demais para o anel: 'frota', 'viagem' e
+       'combustível' são três áreas e uma família só. O agrupamento de fábrica
+       continua valendo para quem já existia; agente novo entra pela área dele,
+       e os vigias ganham a família que os define — ela mesma os criou. */
+    const famDeFabrica = new Map(AGENTES.map((x) => [x.id, x.fam]));
+    /* Agente de código tem nome de gente — 'Marta', 'Otávio'. Vigia tem nome
+       de pergunta, e pergunta inteira não cabe no anel sem atropelar o
+       vizinho. No desenho ele entra curto; o nome completo continua na Sala
+       do CEO, onde há espaço para ler. */
+    const curto = (t) => {
+      const x = String(t || '');
+      if (x.length <= 24) return x;
+      const corte = x.slice(0, 24);
+      const esp = corte.lastIndexOf(' ');
+      return `${(esp > 12 ? corte.slice(0, esp) : corte).trim()}…`;
+    };
+    agentes = d.equipe.map((a) => ({
+      id: a.id, nome: curto(a.nome), area: a.area,
+      fam: a.especie === 'vigia' ? 'Vigias criados por ela'
+        : (famDeFabrica.get(a.id) || cap(a.area || 'outros')),
+      situacao: a.situacao, especie: a.especie, audita: a.audita,
+    }));
+    recompassar(agentes.length);
+    const n = d.numeros || {};
+    const partes = [];
+    if (n.agentes) partes.push(`${n.agentes} agentes`);
+    if (n.vigias) partes.push(`${n.vigias} vigias criados por ela`);
+    if (n.habilitados) partes.push(`${n.habilitados} com trabalho ligado`);
+    resumoEquipe = partes.join(' · ');
+    return true;
+  }
+
+  try {
+    const guardado = localStorage.getItem('noria.retrato');
+    if (guardado) aplicarRetrato(JSON.parse(guardado));
+  } catch { /* foto ilegível: segue com o retrato de fábrica */ }
+  recompassar(agentes.length);
+
   try {
     const tok = localStorage.getItem('noria.token');
     if (tok) {
-      fetch('/api/agentes', { headers: { Authorization: `Bearer ${tok}` } })
+      fetch('/api/retrato', { headers: { Authorization: `Bearer ${tok}` } })
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
-          const lista = d && d.agentes;
-          if (!Array.isArray(lista) || lista.length === 0) return;
-          const porId = new Map(lista.map((a) => [a.id, a]));
-          agentes.forEach((a) => {
-            const v = porId.get(a.id);
-            if (v) {
-              a.nome = v.nome || a.nome;
-              a.situacao = v.situacao || null;
-              a.fam = v.area || a.fam;
-            }
-          });
-          const hab = lista.filter((a) => a.situacao === 'habilitado').length;
-          const rev = lista.filter((a) => a.situacao === 'revisor').length;
-          const sem = lista.length - hab - rev;
-          resumoEquipe = `${hab} habilitados · ${rev} revisor · ${sem} sem integração`;
+          if (!aplicarRetrato(d)) return;
+          try { localStorage.setItem('noria.retrato', JSON.stringify(d)); } catch {}
+          montarRoteiro();
+          narrar();
         })
         .catch(() => { /* silencioso: a abertura não depende disso */ });
     }
@@ -386,13 +438,146 @@ export function abertura(el, aoTerminar) {
   const ro = new ResizeObserver(medir);
   ro.observe(el);
 
+  /* ----- A voz dela ----------------------------------------------------- */
+  /* Voz do próprio navegador, de propósito. Áudio gravado ficaria bonito hoje e
+     mentiria amanhã: no dia em que ela criar o décimo vigia, o arquivo continua
+     dizendo dois. Aqui a fala é montada das mesmas contagens que desenham a
+     tela — evolui junto, sem ninguém regravar nada. Voz feminina em português
+     do Brasil quando a máquina tiver uma; se não tiver, ela fica em silêncio e
+     o texto na tela conta a mesma história. */
+  const VOZ_CHAVE = 'noria.voz';
+  let vozLigada = true;
+  try { vozLigada = localStorage.getItem(VOZ_CHAVE) !== 'off'; } catch {}
+  let falas = [];
+  let ditas = 0;
+  let vozEscolhida = null;
+  let narrouComeco = false;
+
+  const FEMININAS = /(maria|francisca|luciana|thalita|camila|vit[oó]ria|helena|fernanda|female|mulher)/i;
+
+  function escolherVoz() {
+    let vs = [];
+    try { vs = window.speechSynthesis.getVoices() || []; } catch { return null; }
+    const br = vs.filter((v) => /pt[-_]?BR/i.test(v.lang || ''));
+    const pt = br.length ? br : vs.filter((v) => /^pt/i.test(v.lang || ''));
+    if (!pt.length) return null;
+    return pt.find((v) => FEMININAS.test(v.name || ''))
+      || pt.find((v) => /google/i.test(v.name || ''))
+      || pt[0];
+  }
+
+  function montarFalas() {
+    const n = (retrato && retrato.numeros) || {};
+    const f = [];
+    f.push({ t: 900, txt: 'Eu sou a NÓRIA, o cérebro da Pianetto Transportes.' });
+
+    const quem = n.vigias
+      ? `Trabalho com ${pl(n.agentes, 'agente', 'agentes')} e `
+        + `${pl(n.vigias, 'vigia que eu mesma criei', 'vigias que eu mesma criei')}, `
+        + `em ${pl(n.areas, 'área', 'áreas')} da empresa.`
+      : `Trabalho com ${n.agentes || agentes.length} agentes em `
+        + `${n.areas || familias(agentes).length} áreas da empresa.`;
+    f.push({ t: T_AG + 200, txt: quem });
+
+    f.push({ t: T_FAM + 200, txt: 'Leio o sistema da empresa em somente leitura. '
+      + 'Não escrevo nada lá dentro. Cada número que eu te mostro foi apurado no '
+      + 'banco e refeito por outro caminho antes de chegar na sua tela.' });
+
+    if (n.hipoteses) {
+      f.push({ t: T_PAR + 100, txt: `Já levantei ${pl(n.hipoteses, 'pergunta', 'perguntas')} `
+        + 'sem ninguém pedir, e derrubei '
+        + `${pl(n.derrubadas || 0, 'uma delas', 'delas')} quando o banco não `
+        + 'confirmou o que eu suspeitava. Pergunta derrubada também é trabalho feito.' });
+    }
+    if (n.missoes_dela) {
+      f.push({ t: T_PAR + PASSO_PAR + 200, txt: `${n.missoes_dela} das minhas `
+        + `${n.missoes} missões começaram por conta própria, sem clique seu.` });
+    }
+    f.push({ t: T_ATO4 - 200, txt: 'Eu te ajudo a enxergar onde o seu dinheiro '
+      + 'está parado antes que ele vire prejuízo: título vencido, frete entregue '
+      + 'sem cobrança, caminhão rodando abaixo do custo. Com o número e a prova junto.' });
+    f.push({ t: T_ATO4 + 500, txt: 'Estou em operação. Me diga o objetivo.' });
+
+    falas = f;
+    ditas = 0;
+  }
+
+  function narrar() {
+    montarFalas();
+  }
+  narrar();
+
+  /* Nem toda máquina tem voz em português instalada. Falar português com voz
+     inglesa soa pior que silêncio — nesse caso ela se cala e o botão diz por
+     quê, em vez de fingir que está falando. */
+  let semVozPt = false;
+  function conferirVoz() {
+    if (vozEscolhida) return true;
+    vozEscolhida = escolherVoz();
+    if (vozEscolhida) { semVozPt = false; return true; }
+    let n = 0;
+    try { n = (window.speechSynthesis.getVoices() || []).length; } catch {}
+    if (n > 0) {                       // lista já carregada e sem português
+      semVozPt = true;
+      btVoz.textContent = 'sem voz em português';
+      btVoz.disabled = true;
+    }
+    return false;
+  }
+
+  function dizer(txt) {
+    if (!vozLigada || semVozPt) return;
+    if (!conferirVoz()) return;
+    let u;
+    try { u = new SpeechSynthesisUtterance(txt); } catch { return; }
+    u.voice = vozEscolhida;
+    u.lang = (vozEscolhida && vozEscolhida.lang) || 'pt-BR';
+    u.rate = 0.98;
+    u.pitch = 1.06;   // um pouco acima do padrão: voz de mulher, sem caricatura
+    u.onstart = () => { narrouComeco = true; };
+    try { window.speechSynthesis.speak(u); } catch {}
+  }
+
+  function calarVoz() {
+    try { window.speechSynthesis.cancel(); } catch {}
+  }
+
+  /* Botão de voz: canto de cima, discreto. Alguns navegadores só deixam falar
+     depois de um toque — se em dois segundos nada saiu, o botão pisca uma vez
+     e o primeiro toque em qualquer lugar solta a voz do começo. */
+  const btVoz = document.createElement('button');
+  btVoz.type = 'button';
+  btVoz.className = 'abertura-voz';
+  btVoz.setAttribute('aria-label', vozLigada ? 'desligar a voz' : 'ligar a voz');
+  btVoz.textContent = vozLigada ? 'voz ligada' : 'voz desligada';
+  btVoz.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    vozLigada = !vozLigada;
+    try { localStorage.setItem(VOZ_CHAVE, vozLigada ? 'on' : 'off'); } catch {}
+    btVoz.textContent = vozLigada ? 'voz ligada' : 'voz desligada';
+    if (!vozLigada) calarVoz();
+    else if (falas[0]) dizer(falas[0].txt);
+  });
+  el.appendChild(btVoz);
+
+  function destravarVoz() {
+    if (!vozLigada || narrouComeco || ditas === 0) return;
+    dizer(falas[0].txt);
+  }
+  window.addEventListener('pointerdown', destravarVoz, { once: true });
+  window.addEventListener('keydown', destravarVoz, { once: true });
+
   /* ----- Roteiro do log ------------------------------------------------- */
   function montarRoteiro() {
     roteiro.length = 0;
+    const num = (retrato && retrato.numeros) || {};
+    const marcos = new Set(((retrato && retrato.marcos) || []).map((m) => m.chave));
     roteiro.push(
       { t: 200,  tipo: 'info', txt: 'instância isolada · noria-prod-01' },
       { t: 760,  tipo: 'ok',   txt: 'banco atua aberto em somente leitura' },
-      { t: 1320, tipo: 'ok',   txt: '20 consultas nomeadas · nenhuma escrita permitida' },
+      { t: 1320, tipo: 'ok',   txt: num.evidencias
+        ? `${num.evidencias} evidências no acervo · nenhuma escrita permitida`
+        : 'consultas nomeadas · nenhuma escrita permitida' },
       { t: 1880, tipo: 'info', txt: 'seis camadas de validação armadas' },
       { t: 2060, tipo: 'info', txt: 'acordando a equipe' }
     );
@@ -408,10 +593,10 @@ export function abertura(el, aoTerminar) {
       txt: () => resumoEquipe || `${agentes.length} agentes no cadastro`
     });
     roteiro.push({ t: T_FAM - 60, tipo: 'info', txt: 'fechando as áreas' });
-    FAMILIAS_PADRAO.forEach((f, i) => roteiro.push({
+    familias(agentes).forEach((f, i) => roteiro.push({
       t: T_FAM + i * PASSO_FAM + 120,
       tipo: 'ok',
-      txt: `${f.fam.toLowerCase()} · ${f.ids.length} agentes`
+      txt: `${f.fam.toLowerCase()} · ${pl(f.ids.length, 'agente', 'agentes')}`
     }));
     roteiro.push({ t: T_PAR - 60, tipo: 'info', txt: 'ligando os pares de contraprova' });
     PARES.forEach((p, i) => {
@@ -423,7 +608,30 @@ export function abertura(el, aoTerminar) {
         txt: `${(a ? a.nome : p[0]).toLowerCase()} × ${(b ? b.nome : p[1]).toLowerCase()} · outro caminho do banco`
       });
     });
-    roteiro.push({ t: T_ATO4 + 80, tipo: 'nucleo', txt: 'núcleo em operação — aguardando objetivo' });
+    /* Os marcos são o que ela aprendeu a fazer desde que nasceu. Cada linha só
+       aparece quando o número que a sustenta existe no banco — não há frase de
+       enfeite aqui. No dia em que ela criar o primeiro agente sozinha, a linha
+       do agente aparece nesta abertura sem ninguém escrever nada. */
+    let tm = T_PAR_FIM - 220;
+    const marcar = (txt) => { roteiro.push({ t: tm, tipo: 'nucleo', txt }); tm += 300; };
+    if (marcos.has('pensamento') && num.hipoteses) {
+      marcar(`${pl(num.hipoteses, 'pergunta levantada', 'perguntas levantadas')} `
+        + `por mim mesma · ${num.confirmadas || 0} confirmadas · `
+        + `${num.derrubadas || 0} derrubadas`);
+    }
+    if (marcos.has('autonomia') && num.missoes_dela) {
+      marcar(`${num.missoes_dela} de ${num.missoes} missões nasceram sem clique humano`);
+    }
+    if (marcos.has('cria_agentes') && num.vigias) {
+      marcar(`${pl(num.vigias, 'vigia que eu criei', 'vigias que eu criei')} `
+        + 'sozinha · nenhum com voz sem sua aprovação');
+    }
+    if (marcos.has('publica') && num.entregaveis) {
+      marcar(`${pl(num.entregaveis, 'publicação escrita', 'publicações escritas')} `
+        + 'sem ninguém pedir');
+    }
+    roteiro.push({ t: Math.max(T_ATO4 + 80, tm), tipo: 'nucleo',
+                   txt: 'núcleo em operação — aguardando objetivo' });
     roteiro.sort((a, b) => a.t - b.t);
   }
   montarRoteiro();
@@ -526,6 +734,13 @@ export function abertura(el, aoTerminar) {
       emitir(roteiro[escritas]);
       escritas++;
     }
+    /* A fala anda no mesmo relógio do desenho: a frase sobre a equipe sai
+       quando os agentes estão acendendo, não antes nem depois. */
+    while (ditas < falas.length && t >= falas[ditas].t) {
+      dizer(falas[ditas].txt);
+      ditas++;
+    }
+
     const prog = clamp(t / T_ATO4, 0, 1);
     barraInterna.style.transform = `scaleX(${prog.toFixed(4)})`;
 
@@ -887,9 +1102,17 @@ export function abertura(el, aoTerminar) {
     // o log sai um pouco antes, para não disputar espaço com a frase
     if (t >= T_REVELA - 600) logEl.classList.add('recolhido');
     if (dtRev >= 0 && !desfecho.classList.contains('no-ar')) {
-      desfecho.textContent =
-        `${agentes.length} agentes · ${fams.length} áreas · `
-        + `${PARES.length} pares de contraprova · 6 camadas de validação`;
+      const nD = (retrato && retrato.numeros) || {};
+      const bl = [];
+      bl.push(nD.vigias
+        ? `${pl(nD.agentes, 'agente', 'agentes')} e `
+          + `${pl(nD.vigias, 'vigia criado por ela', 'vigias criados por ela')}`
+        : pl(agentes.length, 'agente', 'agentes'));
+      bl.push(pl(fams.length, 'família', 'famílias'));
+      bl.push(`${nD.pares || PARES.length} com contraprova`);
+      if (nD.missoes_dela) bl.push(`${nD.missoes_dela} missões por conta própria`);
+      bl.push('6 camadas de validação');
+      desfecho.textContent = bl.join(' · ');
       desfecho.classList.add('no-ar');
     }
 
@@ -935,6 +1158,9 @@ export function abertura(el, aoTerminar) {
   function terminar() {
     if (encerrado) return;
     encerrado = true;
+    // quem pula a abertura pulou a voz também: nada de narração falando
+    // sozinha por cima da Sala do CEO
+    calarVoz();
     destruir();
     try { aoTerminar(); } catch (e) { console.error(e); }
   }
