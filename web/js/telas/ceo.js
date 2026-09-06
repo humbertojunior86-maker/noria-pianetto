@@ -1761,11 +1761,14 @@ function blocoVigias() {
     }
 
     lista.slice(0, 12).forEach((v) => {
+      // Nome próprio na frente, tarefa embaixo: o vigia é alguém da equipe que
+      // cuida de uma coisa, não uma frase comprida com estatísticas em volta.
       const cab = el('div.ceo-vigia-cab', null, [
-        el('span.ceo-vigia-nome', { texto: v.nome }),
+        el('span.ceo-vigia-nome', { texto: v.apelido || v.nome }),
         el(`span.ceo-vigia-est.est-${v.estado}`, { texto: ESTADO_VIGIA_TXT[v.estado] || v.estado }),
       ]);
       const meta = el('div.ceo-vigia-meta', null, [
+        el('span', { texto: v.apelido ? v.nome : '' }),
         el('span', { texto: `${v.area} · corte ${f.dinheiro(v.limiar || 0)}` }),
         el('span', { texto: `${f.numero(v.execucoes || 0)} execuções · ${f.numero(v.achados || 0)} achados · ${f.numero(v.falhas || 0)} falhas` }),
       ]);

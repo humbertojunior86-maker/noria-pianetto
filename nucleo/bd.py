@@ -53,6 +53,7 @@ def transacao():
 # nova precisa entrar aqui ALÉM de entrar no esquema.sql.
 _COLUNAS_NOVAS: list[tuple[str, str, str]] = [
     ("criterio", "tarefa_chave", "TEXT"),
+    ("vigia", "apelido", "TEXT"),
 ]
 
 

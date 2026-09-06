@@ -75,7 +75,8 @@ def criar(empresa_id: int, nome: str, area: str, pergunta: str, motivo: str,
         raise Recusado(f"a consulta não passou na guarda: {e}") from e
 
     vid = bd.inserir("vigia", {
-        "empresa_id": empresa_id, "nome": nome.strip()[:80], "area": area,
+        "empresa_id": empresa_id, "nome": nome.strip()[:80],
+        "apelido": _proximo_nome(empresa_id), "area": area,
         "foco": foco, "pergunta": pergunta.strip(), "motivo": motivo.strip(),
         "consulta": limpa, "campo_valor": campo_valor,
         "campo_rotulo": campo_rotulo, "limiar": float(limiar or 0),
@@ -88,6 +89,50 @@ def criar(empresa_id: int, nome: str, area: str, pergunta: str, motivo: str,
               f"Nasce em observação — não toca o sino até o CEO aprovar.",
               ator="pensamento", dados={"vigia_id": vid, "pergunta": pergunta})
     return {"id": vid, "estado": "observacao"}
+
+
+# -------------------------------------------------------------------- batismo
+# Vigia nasce com dois nomes. O primeiro é a tarefa — "Inadimplência +30 dias
+# acima de R$ 1,5 MM" — que serve para saber o que ele faz. O segundo é o nome
+# dele, curto, do mesmo feitio dos agentes de código. Sem isso, o anel da
+# abertura vira uma parede de frases e a equipe deixa de parecer uma equipe.
+# Ninguém chama o colega pelo cargo escrito por extenso.
+NOMES = [
+    "Hugo", "Elis", "Bento", "Laís", "Ivo", "Nara", "Célia", "Tales",
+    "Selma", "Duda", "Décio", "Alba", "Noel", "Rita", "Lino", "Zita",
+    "Ciro", "Malu", "Baltazar", "Neusa", "Elias", "Wanda",
+]
+
+
+def _proximo_nome(empresa_id: int) -> str:
+    """Escolhe o primeiro nome livre. Livre de verdade: não repete nome de
+    agente de código nem de vigia já batizado, vivo ou aposentado — dois
+    'Hugo' na mesma casa confundem quem lê o alerta às sete da manhã."""
+    usados = set()
+    for r in bd.linhas("SELECT apelido FROM vigia WHERE apelido IS NOT NULL"):
+        usados.add((r["apelido"] or "").strip().lower())
+    try:
+        from agentes import registro as ar
+        for d in ar.todos():
+            usados.add((d.nome or "").strip().lower())
+    except Exception:  # noqa: BLE001 — registro indisponível não impede batismo
+        pass
+    for n in NOMES:
+        if n.lower() not in usados:
+            return n
+    # Lista esgotada: numera em vez de repetir. Feio, mas honesto.
+    return f"Vigia {bd.linha('SELECT COUNT(*) AS n FROM vigia')['n'] + 1}"
+
+
+def batizar_pendentes(empresa_id: int) -> int:
+    """Dá nome a quem nasceu antes desta regra existir. Idempotente."""
+    n = 0
+    for v in bd.linhas("SELECT id FROM vigia WHERE empresa_id=? AND "
+                       "(apelido IS NULL OR apelido='') ORDER BY id",
+                       (empresa_id,)):
+        bd.atualizar("vigia", v["id"], {"apelido": _proximo_nome(empresa_id)})
+        n += 1
+    return n
 
 
 # ------------------------------------------------------------------ execução

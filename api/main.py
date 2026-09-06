@@ -1210,10 +1210,17 @@ def retrato(s: dict = Depends(sessao)):
 
     # Os vigias entram na mesma roda dos agentes de código: quem vigia a margem
     # todo dia é equipe, não anexo. O que muda é a etiqueta.
-    for v in bd.linhas("SELECT id, nome, area, estado FROM vigia WHERE "
-                       "empresa_id=? AND estado IN ('observacao','ativo') "
+    from nucleo import vigia as nv
+    try:
+        nv.batizar_pendentes(eid)   # quem nasceu antes da regra ganha nome
+    except Exception:  # noqa: BLE001 — retrato não pode quebrar por batismo
+        pass
+    for v in bd.linhas("SELECT id, nome, apelido, area, estado FROM vigia "
+                       "WHERE empresa_id=? AND estado IN ('observacao','ativo') "
                        "ORDER BY id", (eid,)):
-        equipe.append({"id": f"vigia.{v['id']}", "nome": v["nome"],
+        equipe.append({"id": f"vigia.{v['id']}",
+                       "nome": v["apelido"] or v["nome"],
+                       "tarefa": v["nome"],
                        "area": v["area"], "especie": "vigia",
                        "situacao": "habilitado" if v["estado"] == "ativo"
                        else "observacao", "audita": False})

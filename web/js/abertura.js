@@ -469,34 +469,28 @@ export function abertura(el, aoTerminar) {
   function montarFalas() {
     const n = (retrato && retrato.numeros) || {};
     const f = [];
-    f.push({ t: 900, txt: 'Eu sou a NÓRIA, o cérebro da Pianetto Transportes.' });
+    /* A abertura dura nove segundos. Frase que não cabe em nove segundos não é
+       apresentação, é atropelo — a voz fica correndo atrás do desenho e as duas
+       coisas se perdem. Frases curtas, uma ideia em cada. */
+    f.push({ t: 900, txt: 'Eu sou a NÓRIA, o cérebro da Pianetto.' });
 
-    const quem = n.vigias
-      ? `Trabalho com ${pl(n.agentes, 'agente', 'agentes')} e `
-        + `${pl(n.vigias, 'vigia que eu mesma criei', 'vigias que eu mesma criei')}, `
-        + `em ${pl(n.areas, 'área', 'áreas')} da empresa.`
-      : `Trabalho com ${n.agentes || agentes.length} agentes em `
-        + `${n.areas || familias(agentes).length} áreas da empresa.`;
-    f.push({ t: T_AG + 200, txt: quem });
+    f.push({ t: T_AG + 200, txt: n.vigias
+      ? `${pl(n.agentes, 'agente', 'agentes')} e `
+        + `${pl(n.vigias, 'vigia', 'vigias')} que eu mesma criei.`
+      : `${pl(n.agentes || agentes.length, 'agente', 'agentes')} comigo.` });
 
-    f.push({ t: T_FAM + 200, txt: 'Leio o sistema da empresa em somente leitura. '
-      + 'Não escrevo nada lá dentro. Cada número que eu te mostro foi apurado no '
-      + 'banco e refeito por outro caminho antes de chegar na sua tela.' });
+    f.push({ t: T_FAM + 200, txt: 'Leio o sistema sem escrever nada. '
+      + 'Todo número é conferido por dois caminhos.' });
 
-    if (n.hipoteses) {
-      f.push({ t: T_PAR + 100, txt: `Já levantei ${pl(n.hipoteses, 'pergunta', 'perguntas')} `
-        + 'sem ninguém pedir, e derrubei '
-        + `${pl(n.derrubadas || 0, 'uma delas', 'delas')} quando o banco não `
-        + 'confirmou o que eu suspeitava. Pergunta derrubada também é trabalho feito.' });
-    }
     if (n.missoes_dela) {
-      f.push({ t: T_PAR + PASSO_PAR + 200, txt: `${n.missoes_dela} das minhas `
-        + `${n.missoes} missões começaram por conta própria, sem clique seu.` });
+      f.push({ t: T_PAR + 100, txt: `${n.missoes_dela} das `
+        + `${n.missoes} missões começaram sem você pedir.` });
     }
-    f.push({ t: T_ATO4 - 200, txt: 'Eu te ajudo a enxergar onde o seu dinheiro '
-      + 'está parado antes que ele vire prejuízo: título vencido, frete entregue '
-      + 'sem cobrança, caminhão rodando abaixo do custo. Com o número e a prova junto.' });
-    f.push({ t: T_ATO4 + 500, txt: 'Estou em operação. Me diga o objetivo.' });
+
+    f.push({ t: T_ATO4 - 300, txt: 'Mostro onde o seu dinheiro está parado '
+      + 'antes de virar prejuízo.' });
+
+    f.push({ t: T_ATO4 + 500, txt: 'Me diga o objetivo.' });
 
     falas = f;
     ditas = 0;
@@ -532,8 +526,11 @@ export function abertura(el, aoTerminar) {
     try { u = new SpeechSynthesisUtterance(txt); } catch { return; }
     u.voice = vozEscolhida;
     u.lang = (vozEscolhida && vozEscolhida.lang) || 'pt-BR';
-    u.rate = 0.98;
-    u.pitch = 1.06;   // um pouco acima do padrão: voz de mulher, sem caricatura
+    /* Grave e um pouco mecânica de propósito. Voz feminina, mas sem doçura de
+       atendente: ela é um sistema de apuração, não uma recepcionista. O tom
+       baixo e o compasso pausado dão o peso de máquina que pensa. */
+    u.rate = 0.88;
+    u.pitch = 0.72;
     u.onstart = () => { narrouComeco = true; };
     try { window.speechSynthesis.speak(u); } catch {}
   }

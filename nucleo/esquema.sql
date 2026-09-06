@@ -485,7 +485,8 @@ CREATE INDEX IF NOT EXISTS ix_demanda_fila ON demanda(empresa_id, estado, recebi
 CREATE TABLE IF NOT EXISTS vigia (
   id            INTEGER PRIMARY KEY,
   empresa_id    INTEGER NOT NULL REFERENCES empresa(id),
-  nome          TEXT NOT NULL,
+  nome          TEXT NOT NULL,          -- o que ele vigia (título da tarefa)
+  apelido       TEXT,                   -- como ele se chama, igual aos agentes
   area          TEXT NOT NULL,
   foco          TEXT NOT NULL DEFAULT 'margem',
   pergunta      TEXT NOT NULL,
