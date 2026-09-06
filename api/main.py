@@ -1046,6 +1046,76 @@ def autonomia(s: dict = Depends(sessao)):
     }
 
 
+# -------------------------------------------------------------------- crítico
+# O canal do toque no ombro. Só sai daqui o que muda uma decisão hoje: o corte
+# está em nucleo/critico.py, com o número escrito na frente de cada regra.
+# Quem consome (a notificação no celular) marca até onde já avisou, então o
+# mesmo alerta nunca toca duas vezes — e um alerta novo nunca fica preso.
+_VISTO_AVISO = "critico.visto.aviso"
+_VISTO_EVENTO = "critico.visto.evento"
+
+
+@app.get("/api/criticos")
+def criticos(s: dict = Depends(sessao)):
+    """O que é grave o bastante para interromper o dia do dono, e por quê."""
+    from nucleo import critico as cr
+    eid = s["usuario"]["empresa_id"]
+    de_aviso = cr.marcador_visto(_VISTO_AVISO)
+    de_evento = cr.marcador_visto(_VISTO_EVENTO)
+
+    novos = []
+    ult_aviso = de_aviso
+    for r in bd.linhas(
+        "SELECT id, especie, gravidade, titulo, texto, valor, quantidade, "
+        "agente_nome, criado_em FROM aviso WHERE empresa_id = ? AND id > ? "
+        "ORDER BY id ASC LIMIT 50", (eid, de_aviso)):
+        ult_aviso = max(ult_aviso, r["id"])
+        ok, porque = cr.e_critico(r)
+        if not ok:
+            continue
+        novos.append({
+            "origem": "agente", "id": r["id"], "quando": r["criado_em"],
+            "quem": r["agente_nome"], "titulo": r["titulo"], "texto": r["texto"],
+            "valor": r["valor"], "quantidade": r["quantidade"],
+            "porque_critico": porque,
+        })
+
+    ult_evento = de_evento
+    for r in bd.linhas(
+        "SELECT id, tipo, texto, criado_em FROM evento WHERE empresa_id = ? "
+        "AND id > ? AND tipo IN ('sentinela.alerta','sentinela.falha') "
+        "ORDER BY id ASC LIMIT 50", (eid, de_evento)):
+        ult_evento = max(ult_evento, r["id"])
+        novos.append({
+            "origem": "sentinela", "id": r["id"], "quando": r["criado_em"],
+            "quem": "sentinela", "titulo": r["texto"], "texto": "",
+            "porque_critico": ("a vigilância caiu" if r["tipo"] == "sentinela.falha"
+                               else "salto na carteira acima do corte do dia"),
+        })
+
+    novos.sort(key=lambda a: a["quando"] or "", reverse=True)
+    return {
+        "criticos": novos,
+        "ate_aviso": ult_aviso,
+        "ate_evento": ult_evento,
+        "corte": {"dinheiro": 250000.0,
+                  "regra": "espécie crítica por natureza ou dinheiro acima do corte"},
+        "agora": bd.agora(),
+    }
+
+
+@app.post("/api/criticos/visto")
+def criticos_visto(corpo: dict, s: dict = Depends(sessao)):
+    """Registra até onde o dono já foi avisado. Sem isso, o aviso repetiria."""
+    from nucleo import critico as cr
+    if corpo.get("ate_aviso") is not None:
+        cr.gravar_visto(_VISTO_AVISO, int(corpo["ate_aviso"]))
+    if corpo.get("ate_evento") is not None:
+        cr.gravar_visto(_VISTO_EVENTO, int(corpo["ate_evento"]))
+    return {"ok": True}
+
+
+
 # ------------------------------------------------------------------- estático
 WEB = RAIZ / "web"
 if WEB.is_dir():
