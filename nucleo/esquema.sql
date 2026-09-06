@@ -470,3 +470,76 @@ CREATE TABLE IF NOT EXISTS demanda (
   UNIQUE(canal, externo_id)
 );
 CREATE INDEX IF NOT EXISTS ix_demanda_fila ON demanda(empresa_id, estado, recebida_em DESC);
+
+-- -------------------------------------------------------------------- vigia
+-- Um vigia é um agente que a NÓRIA cria SOZINHA, e ele é dado — nunca código.
+-- O motor que roda vigia está em nucleo/vigia.py e é imutável em produção;
+-- aqui fica só a pergunta, a consulta e o limiar. Foi assim que se deu a ela
+-- o poder de criar agentes sem lhe dar o poder de escrever no sistema: se um
+-- vigia estiver errado, some apagando uma linha, não fazendo um deploy.
+--
+-- `estado` conta a vida dele: nasce em 'observacao' (roda, apura e registra,
+-- mas não toca o sino do alerta crítico), vira 'ativo' quando o CEO aprova,
+-- cai para 'suspenso' sozinho depois de três falhas seguidas e vai para
+-- 'aposentado' quando passa trinta dias sem achar nada.
+CREATE TABLE IF NOT EXISTS vigia (
+  id            INTEGER PRIMARY KEY,
+  empresa_id    INTEGER NOT NULL REFERENCES empresa(id),
+  nome          TEXT NOT NULL,
+  area          TEXT NOT NULL,
+  foco          TEXT NOT NULL DEFAULT 'margem',
+  pergunta      TEXT NOT NULL,
+  motivo        TEXT NOT NULL,          -- por que ele precisa existir
+  consulta      TEXT NOT NULL,          -- SELECT conferido pela guarda
+  campo_valor   TEXT,                   -- coluna que carrega o dinheiro
+  campo_rotulo  TEXT,                   -- coluna que nomeia a linha
+  limiar        REAL NOT NULL DEFAULT 0,
+  especie       TEXT NOT NULL DEFAULT 'margem',
+  gravidade     TEXT NOT NULL DEFAULT 'alta',
+  cadencia      TEXT NOT NULL DEFAULT 'diaria',
+  estado        TEXT NOT NULL DEFAULT 'observacao',
+  criado_por    TEXT NOT NULL DEFAULT 'pensamento',
+  hipotese_id   INTEGER REFERENCES hipotese(id),
+  execucoes     INTEGER NOT NULL DEFAULT 0,
+  falhas        INTEGER NOT NULL DEFAULT 0,
+  falhas_seguidas INTEGER NOT NULL DEFAULT 0,
+  achados       INTEGER NOT NULL DEFAULT 0,
+  ultimo_achado TEXT,
+  ultima_execucao TEXT,
+  aprovado_em   TEXT,
+  aprovado_por  TEXT,
+  criada_em     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_vigia_fila ON vigia(empresa_id, estado, id DESC);
+
+CREATE TABLE IF NOT EXISTS vigia_execucao (
+  id            INTEGER PRIMARY KEY,
+  vigia_id      INTEGER NOT NULL REFERENCES vigia(id),
+  quando        TEXT NOT NULL,
+  ok            INTEGER NOT NULL,
+  linhas        INTEGER,
+  valor         REAL,
+  achou         INTEGER NOT NULL DEFAULT 0,
+  aviso_id      INTEGER REFERENCES aviso(id),
+  erro          TEXT,
+  amostra       TEXT                     -- json das primeiras linhas
+);
+CREATE INDEX IF NOT EXISTS ix_vigia_exec ON vigia_execucao(vigia_id, id DESC);
+
+-- --------------------------------------------------------------- entregável
+-- Informação nova que ninguém pediu. A NÓRIA monta quando descobre algo que
+-- merece existir como documento, e publica no painel interno. Sair para fora
+-- da casa — cliente, banco, órgão — exige aprovação de gente.
+CREATE TABLE IF NOT EXISTS entregavel (
+  id            INTEGER PRIMARY KEY,
+  empresa_id    INTEGER NOT NULL REFERENCES empresa(id),
+  titulo        TEXT NOT NULL,
+  motivo        TEXT NOT NULL,
+  foco          TEXT NOT NULL DEFAULT 'margem',
+  origem        TEXT NOT NULL,          -- vigia:<id> | hipotese:<id> | missao:<id>
+  secoes        TEXT NOT NULL,          -- json [{titulo, texto, linhas[]}]
+  destino       TEXT NOT NULL DEFAULT 'interno',  -- interno | externo
+  estado        TEXT NOT NULL DEFAULT 'publicado', -- publicado | aprovado | arquivado
+  criado_em     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_entregavel ON entregavel(empresa_id, id DESC);

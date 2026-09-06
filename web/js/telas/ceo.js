@@ -1704,6 +1704,160 @@ function blocoAutonomia() {
   return { no, atualizar };
 }
 
+
+/* ------------------------------------------------------ agentes que ela cria
+   O poder mais perigoso que a NÓRIA ganhou: criar agente sozinha. Por isso
+   esta tela mostra os limites ANTES de mostrar os agentes — quem abre precisa
+   ler primeiro o que ela não pode fazer, e só depois o que ela fez. */
+const ESTADO_VIGIA_TXT = {
+  observacao: 'em observação — não toca o sino',
+  ativo: 'ativo — pode tocar o alerta crítico',
+  suspenso: 'suspenso sozinho depois de falhar',
+  aposentado: 'aposentado',
+};
+
+function blocoVigias() {
+  const corpo = el('div.ceo-vigias');
+  const no = painel({
+    titulo: 'Agentes que a NÓRIA criou sozinha',
+    nota: 'ela pode criar vigia quando entende que um ponto de margem precisa '
+      + 'ser olhado todo dia. O que ela cria é dado, nunca código: um vigia é '
+      + 'uma pergunta, uma consulta de leitura e um limiar. Nasce mudo, e quem '
+      + 'dá voz é você.',
+    corpo: [corpo],
+  });
+
+  async function atualizar() {
+    let d;
+    try {
+      d = await api.vigias();
+    } catch (e) {
+      limpar(corpo);
+      juntar(corpo, el('div.aviso-erro', {
+        texto: `Não deu para ler os vigias: ${e && e.message ? e.message : 'erro inesperado'}.`,
+      }));
+      return;
+    }
+    limpar(corpo);
+
+    juntar(corpo, el('div.ceo-coleira', null, [
+      el('span.ceo-coleira-t', { texto: 'A coleira' }),
+      el('span', { texto: `${d.vivos || 0} de ${d.teto || 0} vigias vivos` }),
+      el('span', { texto: 'não altera código' }),
+      el('span', { texto: 'não escreve no ATUA' }),
+      el('span', { texto: 'não se promove sozinha' }),
+      el('span', { texto: `${(d.limites || {}).falhas_para_suspender || 3} falhas seguidas suspendem` }),
+    ]));
+
+    const lista = Array.isArray(d.vigias) ? d.vigias : [];
+    if (!lista.length) {
+      juntar(corpo, el('p.ajuda', {
+        texto: 'A NÓRIA ainda não criou nenhum agente. Ela decide isso no ciclo '
+          + 'do pensamento, às 19h, e só quando um ponto de margem se repete a '
+          + 'ponto de merecer vigilância permanente. Nenhum vigia inventado para '
+          + 'parecer produtiva.',
+      }));
+      return;
+    }
+
+    lista.slice(0, 12).forEach((v) => {
+      const cab = el('div.ceo-vigia-cab', null, [
+        el('span.ceo-vigia-nome', { texto: v.nome }),
+        el(`span.ceo-vigia-est.est-${v.estado}`, { texto: ESTADO_VIGIA_TXT[v.estado] || v.estado }),
+      ]);
+      const meta = el('div.ceo-vigia-meta', null, [
+        el('span', { texto: `${v.area} · corte ${f.dinheiro(v.limiar || 0)}` }),
+        el('span', { texto: `${f.numero(v.execucoes || 0)} execuções · ${f.numero(v.achados || 0)} achados · ${f.numero(v.falhas || 0)} falhas` }),
+      ]);
+      const acoes = el('div.ceo-vigia-acoes');
+      if (v.estado === 'observacao') {
+        const bAp = el('button.btn.btn-peq', { type: 'button', texto: 'Dar voz a este vigia' });
+        bAp.addEventListener('click', async () => {
+          bAp.disabled = true;
+          try { await api.aprovarVigia(v.id); await atualizar(); } catch (e) { bAp.disabled = false; }
+        });
+        juntar(acoes, bAp);
+      }
+      if (v.estado !== 'aposentado') {
+        const bOf = el('button.btn.btn-peq.btn-plano', { type: 'button', texto: 'Desligar' });
+        bOf.addEventListener('click', async () => {
+          bOf.disabled = true;
+          try { await api.desligarVigia(v.id, 'desligado na Sala do CEO'); await atualizar(); } catch (e) { bOf.disabled = false; }
+        });
+        juntar(acoes, bOf);
+      }
+      juntar(corpo, el('div.ceo-vigia', null, [
+        cab,
+        el('p.ceo-vigia-perg', { texto: v.pergunta || '' }),
+        el('p.ceo-vigia-mot', { texto: `Por que ela criou: ${v.motivo || ''}` }),
+        meta,
+        acoes,
+      ]));
+    });
+  }
+
+  return { no, atualizar };
+}
+
+/* ------------------------------------------- informação que ninguém pediu
+   O outro poder novo: publicar. Ela junta o que os vigias acharam no dia e
+   escreve uma página. Interno sai direto; o que sairia da empresa fica preso
+   esperando aprovação — está escrito no estado de cada um. */
+function blocoEntregaveis() {
+  const corpo = el('div.ceo-entregaveis');
+  const no = painel({
+    titulo: 'O que a NÓRIA publicou sem ninguém pedir',
+    nota: 'quando os vigias dela acham alguma coisa no dia, ela escreve a '
+      + 'página e publica aqui. Nada sai da empresa sozinho: entregável com '
+      + 'destino externo nasce preso, esperando você.',
+    corpo: [corpo],
+  });
+
+  async function atualizar() {
+    let d;
+    try {
+      d = await api.entregaveis();
+    } catch (e) {
+      limpar(corpo);
+      juntar(corpo, el('div.aviso-erro', {
+        texto: `Não deu para ler os entregáveis: ${e && e.message ? e.message : 'erro inesperado'}.`,
+      }));
+      return;
+    }
+    limpar(corpo);
+    const lista = Array.isArray(d.entregaveis) ? d.entregaveis : [];
+    if (!lista.length) {
+      juntar(corpo, el('p.ajuda', {
+        texto: 'Nenhuma publicação ainda. Ela só escreve quando tem achado do '
+          + 'dia com número apurado no banco — dia sem achado é dia sem página, '
+          + 'e isso é a resposta certa.',
+      }));
+      return;
+    }
+    lista.slice(0, 6).forEach((e) => {
+      const secoes = Array.isArray(e.secoes) ? e.secoes : [];
+      const dentro = el('div.ceo-ent-secoes');
+      secoes.slice(0, 4).forEach((sec) => juntar(dentro, el('div.ceo-ent-sec', null, [
+        el('span.ceo-ent-sec-t', { texto: sec.titulo || '' }),
+        el('span.ceo-ent-sec-v', { texto: sec.valor != null ? f.dinheiro(sec.valor) : '' }),
+        el('p.ceo-ent-sec-x', { texto: sec.texto || '' }),
+      ])));
+      juntar(corpo, el('div.ceo-ent', null, [
+        el('div.ceo-vigia-cab', null, [
+          el('span.ceo-vigia-nome', { texto: e.titulo || '' }),
+          el(`span.ceo-vigia-est.est-${e.estado === 'publicado' ? 'ativo' : 'observacao'}`, {
+            texto: e.estado === 'publicado' ? 'publicado internamente' : 'preso, esperando aprovação',
+          }),
+        ]),
+        el('p.ceo-vigia-mot', { texto: e.motivo || '' }),
+        dentro,
+      ]));
+    });
+  }
+
+  return { no, atualizar };
+}
+
 export async function montar(raiz, _params, { pulso, ir }) {
   const caixa = el('div.ceo');
   const painelDados = el('div');   /* os grandes números */
@@ -1722,7 +1876,9 @@ export async function montar(raiz, _params, { pulso, ir }) {
      que estar exatamente aí, antes de qualquer gráfico. */
   const pensa = blocoPensamento();
   const auto = blocoAutonomia();
-  juntar(caixa, [barra, painelDados, ritmo.no, auto.no, pensa.no, resto, fluxo]);
+  const vig = blocoVigias();
+  const ent = blocoEntregaveis();
+  juntar(caixa, [barra, painelDados, ritmo.no, auto.no, vig.no, ent.no, pensa.no, resto, fluxo]);
   juntar(raiz, caixa);
 
   let timer = 0;
@@ -1749,6 +1905,8 @@ export async function montar(raiz, _params, { pulso, ir }) {
       /* o pensamento é lido em separado e nunca derruba o desenho dos números */
       pensa.atualizar();
       auto.atualizar();
+      vig.atualizar();
+      ent.atualizar();
       limpar(painelDados);
       juntar(painelDados, faixaNumeros(d));
       limpar(resto);

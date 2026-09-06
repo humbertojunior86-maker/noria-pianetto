@@ -14,10 +14,13 @@ import re
 from ferramentas import base as fb
 from nucleo import bd
 from . import cliente, guarda, higiene
+from .mandato import MANDATO
 
 EMPRESA = 1
 
-SISTEMA = """Você é a NÓRIA, o cérebro corporativo da
+SISTEMA = MANDATO + """
+
+Você é a NÓRIA, o cérebro corporativo da
 Pianetto Transportes, uma transportadora rodoviária de cargas brasileira.
 
 O que você é: o faro da casa. Você olha os resultados do dia e levanta

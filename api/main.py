@@ -6,6 +6,7 @@ de cada coisa. Integração desconectada chega aqui como desconectada.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import secrets
 import sys
@@ -1113,6 +1114,78 @@ def criticos_visto(corpo: dict, s: dict = Depends(sessao)):
     if corpo.get("ate_evento") is not None:
         cr.gravar_visto(_VISTO_EVENTO, int(corpo["ate_evento"]))
     return {"ok": True}
+
+
+
+# --------------------------------------------------------------------- vigias
+# A governança do poder novo. A NÓRIA cria o vigia; esta é a porta por onde o
+# CEO olha o que ela criou, dá voz ao que presta e desliga o que não presta.
+@app.get("/api/vigias")
+def vigias(s: dict = Depends(sessao)):
+    from nucleo import vigia as nv
+    eid = s["usuario"]["empresa_id"]
+    saida = []
+    for v in bd.linhas(
+        "SELECT * FROM vigia WHERE empresa_id=? ORDER BY "
+        "CASE estado WHEN 'observacao' THEN 0 WHEN 'ativo' THEN 1 "
+        "WHEN 'suspenso' THEN 2 ELSE 3 END, id DESC", (eid,)):
+        ult = bd.linha("SELECT quando, ok, linhas, valor, achou, erro FROM "
+                       "vigia_execucao WHERE vigia_id=? ORDER BY id DESC LIMIT 1",
+                       (v["id"],))
+        saida.append({
+            "id": v["id"], "nome": v["nome"], "area": v["area"],
+            "foco": v["foco"], "pergunta": v["pergunta"], "motivo": v["motivo"],
+            "limiar": v["limiar"], "especie": v["especie"],
+            "estado": v["estado"], "criado_por": v["criado_por"],
+            "execucoes": v["execucoes"], "falhas": v["falhas"],
+            "achados": v["achados"], "criada_em": v["criada_em"],
+            "ultima_execucao": v["ultima_execucao"],
+            "aprovado_por": v["aprovado_por"],
+            "consulta": v["consulta"],
+            "ultima": dict(ult) if ult else None,
+        })
+    vivos = sum(1 for v in saida if v["estado"] in ("observacao", "ativo"))
+    return {"vigias": saida, "vivos": vivos, "teto": nv.TETO_VIVOS,
+            "limites": {
+                "teto_vivos": nv.TETO_VIVOS,
+                "falhas_para_suspender": nv.FALHAS_PARA_SUSPENDER,
+                "dias_sem_achado": nv.DIAS_SEM_ACHADO_PARA_APOSENTAR,
+                "pode_mudar_codigo": False,
+                "pode_escrever_no_atua": False,
+                "pode_dar_voz_a_si_mesma": False,
+            }}
+
+
+@app.post("/api/vigias/{vid}/aprovar")
+def vigia_aprovar(vid: int, s: dict = Depends(sessao)):
+    from nucleo import vigia as nv
+    return nv.aprovar(vid, s["usuario"]["nome"] or s["usuario"]["email"])
+
+
+@app.post("/api/vigias/{vid}/desligar")
+def vigia_desligar(vid: int, corpo: dict | None = None,
+                   s: dict = Depends(sessao)):
+    from nucleo import vigia as nv
+    motivo = (corpo or {}).get("motivo", "")
+    return nv.desligar(vid, s["usuario"]["nome"] or s["usuario"]["email"], motivo)
+
+
+@app.get("/api/entregaveis")
+def entregaveis(s: dict = Depends(sessao)):
+    """Informação nova que ninguém pediu. Interno é publicado; externo espera."""
+    eid = s["usuario"]["empresa_id"]
+    saida = []
+    for e in bd.linhas("SELECT * FROM entregavel WHERE empresa_id=? "
+                       "ORDER BY id DESC LIMIT 30", (eid,)):
+        try:
+            secoes = json.loads(e["secoes"] or "[]")
+        except (TypeError, ValueError):
+            secoes = []
+        saida.append({"id": e["id"], "titulo": e["titulo"], "motivo": e["motivo"],
+                      "foco": e["foco"], "origem": e["origem"],
+                      "destino": e["destino"], "estado": e["estado"],
+                      "criado_em": e["criado_em"], "secoes": secoes})
+    return {"entregaveis": saida}
 
 
 

@@ -2495,3 +2495,64 @@ body.modo-saguao {
   .ceo-ato { grid-template-columns: 1fr; gap: 2px; padding: 9px 0; }
   .ceo-ato-hora, .ceo-ato-fonte { font-size: 11px; }
 }
+
+/* ---------------------------------------------------- agentes que ela cria
+   A coleira vem antes dos agentes de propósito: quem abre a Sala do CEO tem
+   que ler o limite antes de ler o poder. */
+.ceo-vigias { display: flex; flex-direction: column; gap: 14px; }
+
+.ceo-coleira {
+  display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+  padding: 10px 14px; border-radius: 10px;
+  background: var(--painel-alto); border: 1px solid var(--linha-2);
+}
+.ceo-coleira span { font-size: 12px; color: var(--tinta-2); }
+.ceo-coleira span::before { content: '·'; margin-right: 8px; opacity: .5; }
+.ceo-coleira .ceo-coleira-t {
+  font-weight: 600; color: var(--tinta); letter-spacing: .02em;
+  text-transform: uppercase; font-size: 11px;
+}
+.ceo-coleira .ceo-coleira-t::before { content: none; }
+
+.ceo-vigia {
+  padding: 14px; border-radius: 10px;
+  border: 1px solid var(--linha-2); background: var(--painel);
+}
+.ceo-vigia-cab {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+}
+.ceo-vigia-nome { font-weight: 600; color: var(--tinta); }
+.ceo-vigia-est {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--linha-2); color: var(--tinta-2);
+}
+.ceo-vigia-est.est-observacao { color: var(--atencao); border-color: var(--atencao); }
+.ceo-vigia-est.est-ativo { color: var(--acento); border-color: var(--acento); }
+.ceo-vigia-est.est-suspenso { color: var(--erro); border-color: var(--erro); }
+.ceo-vigia-perg { margin: 8px 0 4px; color: var(--tinta); font-size: 14px; }
+.ceo-vigia-mot { margin: 0 0 8px; color: var(--tinta-2); font-size: 12px; }
+.ceo-vigia-meta {
+  display: flex; flex-wrap: wrap; gap: 4px 16px;
+  font-size: 12px; color: var(--tinta-3);
+}
+.ceo-vigia-acoes { display: flex; gap: 8px; margin-top: 10px; }
+
+@media (max-width: 700px) {
+  .ceo-coleira { gap: 6px 10px; }
+  .ceo-vigia-acoes { flex-direction: column; align-items: stretch; }
+}
+
+/* --------------------------------------------- o que ela publicou sozinha */
+.ceo-entregaveis { display: flex; flex-direction: column; gap: 14px; }
+.ceo-ent {
+  padding: 14px; border-radius: 10px;
+  border: 1px solid var(--linha-2); background: var(--painel);
+}
+.ceo-ent-secoes { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.ceo-ent-sec {
+  padding: 10px 12px; border-radius: 8px;
+  background: var(--painel-fundo); border: 1px solid var(--linha);
+}
+.ceo-ent-sec-t { font-size: 13px; font-weight: 600; color: var(--tinta); }
+.ceo-ent-sec-v { font-size: 13px; color: var(--acento); margin-left: 10px; }
+.ceo-ent-sec-x { margin: 4px 0 0; font-size: 12px; color: var(--tinta-2); }

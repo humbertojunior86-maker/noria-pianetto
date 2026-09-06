@@ -155,6 +155,7 @@ def ciclo_do_pensamento(dia: date | None = None) -> list[int]:
     """
     try:
         from pensamento import cliente as cx, faro, veredito
+        from pensamento import mandato
     except Exception:
         return []
     try:
@@ -166,6 +167,14 @@ def ciclo_do_pensamento(dia: date | None = None) -> list[int]:
         return []
     except Exception:
         return []
+    # Depois de pensar, ela decide o que merece virar vigilância permanente e
+    # publica o que descobriu. Cada etapa cai sozinha: vigia que não nasce não
+    # impede o entregável, e entregável que falha não desfaz o faro.
+    for etapa in (mandato.propor_vigias, mandato.entregavel_do_dia):
+        try:
+            etapa()
+        except Exception:
+            log.exception("etapa do mandato falhou: %s", etapa.__name__)
     return []
 
 
@@ -301,6 +310,15 @@ def main() -> None:
         if time.monotonic() >= proxima_vigilia:
             try:
                 sentinela.rodada()
+                # Os vigias que a própria NÓRIA criou rodam aqui, uma vez por
+                # dia cada um. O motor cuida do resto: quem falha três vezes
+                # seguidas se suspende, quem passa trinta dias sem achar nada
+                # se aposenta.
+                try:
+                    from nucleo import vigia as _vg
+                    _vg.rodada()
+                except Exception:
+                    log.exception("erro na rodada de vigias")
             except Exception:  # noqa: BLE001
                 log.exception("erro na sentinela")
             # Depois de olhar a empresa, decide o que disso merece sair daqui.

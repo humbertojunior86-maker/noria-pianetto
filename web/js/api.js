@@ -103,6 +103,15 @@ export const pensamento = () => pedir('/pensamento');
 
 /* o diário do que a NÓRIA fez sem ninguém pedir */
 export const autonomia = () => pedir('/autonomia');
+/* os agentes que a própria NÓRIA criou, e as informações que ela publicou sem
+   ninguém pedir. Quem dá voz a um vigia é o CEO: por isso aprovar e desligar
+   são POST daqui, nunca ato dela. */
+export const vigias = () => pedir('/vigias');
+export const aprovarVigia = (id) => pedir(`/vigias/${id}/aprovar`, { metodo: 'POST', corpo: {} });
+export const desligarVigia = (id, motivo) =>
+  pedir(`/vigias/${id}/desligar`, { metodo: 'POST', corpo: { motivo: motivo || '' } });
+export const entregaveis = () => pedir('/entregaveis');
+
 export const decidirHipotese = (id, decisao) =>
   pedir(`/pensamento/hipoteses/${id}/decidir`, { metodo: 'POST', corpo: { decisao } });
 
