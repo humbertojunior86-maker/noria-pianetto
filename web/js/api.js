@@ -97,6 +97,11 @@ export const ceo = (forcar) => pedir('/ceo' + (forcar ? '?forcar=true' : ''));
 export const agenda = () => pedir('/agenda');
 export const saguao = () => pedir('/saguao');
 export const evidencia = (id) => pedir(`/evidencias/${id}`);
+/* O córtex tem chamada própria: se ele estiver desligado ou sem crédito, a
+   Sala do CEO continua desenhando os números normalmente. */
+export const cortex = () => pedir('/cortex');
+export const decidirHipotese = (id, decisao) =>
+  pedir(`/cortex/hipoteses/${id}/decidir`, { metodo: 'POST', corpo: { decisao } });
 
 /* ------------------------------------------------------------- comandos --- */
 export const criarMissao = (objetivo, contexto) =>

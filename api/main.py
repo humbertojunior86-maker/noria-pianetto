@@ -881,6 +881,80 @@ def demanda_vira_missao(did: int, dados: dict = Body(default={}),
     return {"ok": True, "missao_id": mid}
 
 
+# --------------------------------------------------------------------- córtex
+# O córtex é lateral: se a pasta não existir, estes endpoints respondem
+# "desligado" e o resto da NÓRIA segue igual.
+def _cortex():
+    try:
+        from cortex import cliente as cx
+        return cx
+    except Exception:
+        return None
+
+
+@app.get("/api/cortex")
+def cortex_estado(s: dict = Depends(sessao)):
+    """O que o córtex pensou, o que ele provou e quanto custou."""
+    cx = _cortex()
+    if cx is None:
+        return {"ligado": False, "motivo": "córtex não instalado neste servidor"}
+    try:
+        est = cx.estado()
+    except Exception as e:
+        return {"ligado": False, "motivo": f"córtex sem base: {e}"}
+
+    emp = s["empresa_id"]
+    try:
+        hips = bd.linhas(
+            "SELECT id, pergunta, motivo, aposta, estado, leitura, criada_em, "
+            "decidida_em FROM hipotese WHERE empresa_id=? "
+            "ORDER BY id DESC LIMIT 30", (emp,))
+        contagem = {r["estado"]: r["n"] for r in bd.linhas(
+            "SELECT estado, COUNT(*) AS n FROM hipotese WHERE empresa_id=? "
+            "GROUP BY estado", (emp,))}
+    except Exception as e:
+        return {"ligado": False, "motivo": f"tabelas do córtex ausentes: {e}"}
+
+    for h in hips:
+        h["consultas"] = bd.linhas(
+            "SELECT papel, porta, grao, linhas, recusa, erro, rodou_em, sql "
+            "FROM consulta_proposta WHERE hipotese_id=? ORDER BY id", (h["id"],))
+    return {"ligado": bool(est.get("chave")), "estado": est,
+            "contagem": contagem, "hipoteses": hips}
+
+
+@app.get("/api/cortex/hipoteses/{hid}")
+def cortex_hipotese(hid: int, s: dict = Depends(sessao)):
+    h = bd.linha("SELECT * FROM hipotese WHERE id=? AND empresa_id=?",
+                 (hid, s["empresa_id"]))
+    if not h:
+        raise HTTPException(404, "hipótese não encontrada")
+    h["consultas"] = bd.linhas(
+        "SELECT * FROM consulta_proposta WHERE hipotese_id=? ORDER BY id", (hid,))
+    h["raciocinio"] = bd.linhas(
+        "SELECT passo, texto, criado_em FROM raciocinio WHERE hipotese_id=? "
+        "ORDER BY id", (hid,))
+    return h
+
+
+@app.post("/api/cortex/hipoteses/{hid}/decidir")
+def cortex_decidir(hid: int, dados: dict = Body(...), s: dict = Depends(sessao)):
+    """O CEO aceita ou rejeita o que o córtex levantou. Sem isso, nada vira fato."""
+    if (s["usuario"]["papel"] or "") not in ("ceo", "gestor"):
+        raise HTTPException(403, "só o CEO decide hipótese")
+    decisao = (dados.get("decisao") or "").strip()
+    if decisao not in ("aceitar", "rejeitar"):
+        raise HTTPException(400, "decisão deve ser aceitar ou rejeitar")
+    h = bd.linha("SELECT * FROM hipotese WHERE id=? AND empresa_id=?",
+                 (hid, s["empresa_id"]))
+    if not h:
+        raise HTTPException(404, "hipótese não encontrada")
+    novo = "confirmada" if decisao == "aceitar" else "rejeitada"
+    bd.executar("UPDATE hipotese SET estado=?, decidida_em=? WHERE id=?",
+                (novo, bd.agora(), hid))
+    return {"ok": True, "estado": novo}
+
+
 # ------------------------------------------------------------------- estático
 WEB = RAIZ / "web"
 if WEB.is_dir():

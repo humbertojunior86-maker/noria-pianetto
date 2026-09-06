@@ -1487,6 +1487,130 @@ function faixaRitmo({ nomes }) {
 
 /* ---------------------------------------------------------------- tela --- */
 
+/* ------------------------------------------------------------------ córtex --
+   O que a NÓRIA perguntou por conta própria. Uma pergunta só aparece aqui
+   depois de encarar o banco: nenhuma frase desta lista foi escrita sem que um
+   SELECT determinístico tivesse rodado antes. O bloco tem vida própria — se o
+   córtex estiver desligado ou sem crédito, ele diz isso por escrito e o resto
+   da sala continua igual. */
+const ESTADO_HIP = {
+  levantada: { rot: 'esperando prova', tom: 'ceo-hip-espera' },
+  em_prova: { rot: 'na mesa de prova', tom: 'ceo-hip-espera' },
+  confirmada: { rot: 'confirmada no banco', tom: 'ceo-hip-ok' },
+  derrubada: { rot: 'derrubada pelo banco', tom: 'ceo-hip-fora' },
+  inconclusiva: { rot: 'inconclusiva', tom: 'ceo-hip-duvida' },
+  rejeitada: { rot: 'rejeitada por você', tom: 'ceo-hip-fora' },
+};
+
+function linhaHipotese(h, aoDecidir) {
+  const e = ESTADO_HIP[h.estado] || { rot: h.estado, tom: 'ceo-hip-duvida' };
+  const portas = (h.consultas || []).map((c) => el('span.ceo-hip-porta', {
+    title: c.recusa || c.erro || (c.sql || ''),
+  }, [
+    el('b', { texto: c.papel === 'contraprova' ? 'contraprova' : 'principal' }),
+    el('span', {
+      texto: c.recusa ? `barrada — ${c.recusa}`
+        : c.erro ? `erro — ${c.erro}`
+          : c.linhas === null || c.linhas === undefined ? 'não rodou ainda'
+            : `${f.numero(c.linhas)} linha(s) · ${c.porta || 'atua'}`,
+    }),
+  ]));
+
+  const podeDecidir = h.estado === 'confirmada' || h.estado === 'inconclusiva';
+  return el(`div.ceo-hip.${e.tom}`, null, [
+    el('div.ceo-hip-topo', null, [
+      el('span.ceo-hip-estado', { texto: e.rot }),
+      el('span.ceo-hip-data', { texto: h.decidida_em ? horaSeg(h.decidida_em) : horaSeg(h.criada_em) }),
+    ]),
+    el('p.ceo-hip-perg', { texto: h.pergunta }),
+    h.motivo ? el('p.ceo-hip-motivo', { texto: `por quê: ${h.motivo}` }) : null,
+    h.leitura ? el('p.ceo-hip-leitura', { texto: h.leitura }) : null,
+    portas.length ? el('div.ceo-hip-portas', null, portas) : null,
+    podeDecidir ? el('div.ceo-hip-acoes', null, [
+      el('button.btn.btn-peq', {
+        type: 'button',
+        onclick: () => aoDecidir(h.id, 'aceitar'),
+      }, [el('span', { texto: 'Guardar como aprendizado' })]),
+      el('button.btn.btn-peq.btn-vazio', {
+        type: 'button',
+        onclick: () => aoDecidir(h.id, 'rejeitar'),
+      }, [el('span', { texto: 'Descartar' })]),
+    ]) : null,
+  ]);
+}
+
+function blocoCortex() {
+  const corpo = el('div.ceo-cortex');
+  const no = painel({
+    titulo: 'O que a NÓRIA perguntou sozinha',
+    nota: 'perguntas levantadas pelo córtex e levadas ao banco. Nenhum número aqui '
+      + 'foi escrito pelo modelo: quem soma é o SQL, e a leitura que citar valor sem '
+      + 'lastro nas linhas é bloqueada antes de chegar nesta tela.',
+    corpo: [corpo],
+  });
+
+  async function decidir(id, decisao) {
+    try {
+      await api.decidirHipotese(id, decisao);
+      await atualizar();
+    } catch (e) {
+      limpar(corpo);
+      juntar(corpo, el('div.aviso-erro', {
+        texto: `Não deu para registrar a decisão: ${e && e.message ? e.message : 'erro inesperado'}.`,
+      }));
+    }
+  }
+
+  async function atualizar() {
+    let d;
+    try {
+      d = await api.cortex();
+    } catch (e) {
+      limpar(corpo);
+      juntar(corpo, el('div.aviso-erro', {
+        texto: `O córtex não respondeu: ${e && e.message ? e.message : 'erro inesperado'}. `
+          + 'A sala segue mostrando os números dos agentes, que não dependem dele.',
+      }));
+      return;
+    }
+
+    limpar(corpo);
+    if (!d.ligado) {
+      juntar(corpo, el('div.ceo-cortex-off', null, [
+        el('b', { texto: 'córtex desligado' }),
+        el('span', {
+          texto: (d.motivo || (d.estado && d.estado.motivo)
+            || 'sem chave da Claude neste servidor')
+            + ' — a NÓRIA continua rodando os agentes e apurando os números normalmente.',
+        }),
+      ]));
+      return;
+    }
+
+    const est = d.estado || {};
+    const c = d.contagem || {};
+    juntar(corpo, el('div.ceo-cortex-barra', null, [
+      el('span', { texto: `modelo ${est.modelo || '—'}` }),
+      el('span', { texto: `gasto hoje R$ ${f.numero(est.gasto_dia || 0, 2)} de R$ ${f.numero(est.teto_dia || 0, 2)}` }),
+      el('span', { texto: `no mês R$ ${f.numero(est.gasto_mes || 0, 2)} de R$ ${f.numero(est.teto_mes || 0, 2)}` }),
+      el('span', { texto: `confirmadas ${f.numero(c.confirmada || 0)} · derrubadas ${f.numero(c.derrubada || 0)} · inconclusivas ${f.numero(c.inconclusiva || 0)}` }),
+      est.dormente ? el('b.ceo-cortex-dorme', { texto: `dormente: ${est.motivo || 'teto atingido'}` }) : null,
+    ]));
+
+    const hips = Array.isArray(d.hipoteses) ? d.hipoteses : [];
+    if (!hips.length) {
+      juntar(corpo, el('p.ajuda', {
+        texto: 'O córtex ainda não levantou nenhuma pergunta. O faro roda uma vez por dia, '
+          + 'depois que os agentes fecham o ciclo.',
+      }));
+      return;
+    }
+    hips.slice(0, 8).forEach((h) => juntar(corpo, linhaHipotese(h, decidir)));
+  }
+
+  return { no, atualizar };
+}
+
 export async function montar(raiz, _params, { pulso, ir }) {
   const caixa = el('div.ceo');
   const painelDados = el('div');   /* os grandes números */
@@ -1503,7 +1627,8 @@ export async function montar(raiz, _params, { pulso, ir }) {
   /* A faixa entra entre os grandes números e o resto: o dono lê o dinheiro,
      depois pergunta "e a NÓRIA, está fazendo alguma coisa?" — a resposta tem
      que estar exatamente aí, antes de qualquer gráfico. */
-  juntar(caixa, [barra, painelDados, ritmo.no, resto, fluxo]);
+  const cortex = blocoCortex();
+  juntar(caixa, [barra, painelDados, ritmo.no, cortex.no, resto, fluxo]);
   juntar(raiz, caixa);
 
   let timer = 0;
@@ -1527,6 +1652,8 @@ export async function montar(raiz, _params, { pulso, ir }) {
         }
       });
       if (nomeNovo) ritmo.redesenhar();
+      /* o córtex é lido em separado e nunca derruba o desenho dos números */
+      cortex.atualizar();
       limpar(painelDados);
       juntar(painelDados, faixaNumeros(d));
       limpar(resto);

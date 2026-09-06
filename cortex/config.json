@@ -1,0 +1,13 @@
+{
+  "modelo": "claude-sonnet-4-5",
+  "max_tokens": 4000,
+  "timeout_s": 90,
+  "teto_dia_brl": 15.0,
+  "teto_mes_brl": 250.0,
+  "hipoteses_por_dia": 5,
+  "dedupe_dias": 30,
+  "falhas_para_dormir": 3,
+  "brl_por_usd": 5.4,
+  "usd_por_milhao_entrada": 3.0,
+  "usd_por_milhao_saida": 15.0
+}
