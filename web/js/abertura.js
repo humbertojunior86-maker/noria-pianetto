@@ -121,7 +121,10 @@ const PASSO_PAR = 560;
 const T_PAR_FIM = T_PAR + PASSO_PAR * PARES.length;
 const T_ATO4 = T_PAR_FIM + 320;
 const T_REVELA = T_ATO4 + 420;           // clarão e a frase final
-const T_FIM = T_ATO4 + 2600;
+/* A cauda ficou mais longa porque agora há alguém falando. A última frase
+   precisa terminar antes de a tela apagar — voz cortada no meio é pior que
+   silêncio. */
+const T_FIM = T_ATO4 + 3900;
 
 const MAX_LINHAS = 7;
 
@@ -455,7 +458,11 @@ export function abertura(el, aoTerminar) {
   let vozEscolhida = null;
   let narrouComeco = false;
 
-  const FEMININAS = /(maria|francisca|luciana|thalita|camila|vit[oó]ria|helena|fernanda|female|mulher)/i;
+  /* Voz masculina, para casar com a gravação de estúdio das frases fixas.
+     Metade da abertura é arquivo, metade é o navegador falando os números do
+     dia — se as duas metades tiverem gênero diferente, parecem duas pessoas
+     discutindo, e a apresentação perde o dono. */
+  const MASCULINAS = /(daniel|ricardo|felipe|ant[oô]nio|antonio|jo[aã]o|paulo|fabio|f[aá]bio|julio|j[uú]lio|nicolau|valerio|val[eé]rio|male|homem|masculin)/i;
 
   function escolherVoz() {
     let vs = [];
@@ -463,36 +470,21 @@ export function abertura(el, aoTerminar) {
     const br = vs.filter((v) => /pt[-_]?BR/i.test(v.lang || ''));
     const pt = br.length ? br : vs.filter((v) => /^pt/i.test(v.lang || ''));
     if (!pt.length) return null;
-    return pt.find((v) => FEMININAS.test(v.name || ''))
+    return pt.find((v) => MASCULINAS.test(v.name || ''))
       || pt.find((v) => /google/i.test(v.name || ''))
       || pt[0];
   }
 
   function montarFalas() {
-    const n = (retrato && retrato.numeros) || {};
     const f = [];
-    /* A abertura dura nove segundos. Frase que não cabe em nove segundos não é
-       apresentação, é atropelo — a voz fica correndo atrás do desenho e as duas
-       coisas se perdem. Frases curtas, uma ideia em cada. */
-    f.push({ t: 900, txt: 'Eu sou a NÓRIA, o cérebro da Pianetto.' });
-
-    f.push({ t: T_AG + 200, txt: n.vigias
-      ? `${pl(n.agentes, 'agente', 'agentes')} e `
-        + `${pl(n.vigias, 'vigia', 'vigias')} que eu mesma criei.`
-      : `${pl(n.agentes || agentes.length, 'agente', 'agentes')} comigo.` });
-
-    f.push({ t: T_FAM + 200, txt: 'Leio o sistema sem escrever nada. '
-      + 'Todo número é conferido por dois caminhos.' });
-
-    if (n.missoes_dela) {
-      f.push({ t: T_PAR + 100, txt: `${n.missoes_dela} das `
-        + `${n.missoes} missões começaram sem você pedir.` });
-    }
-
-    f.push({ t: T_ATO4 - 300, txt: 'Mostro onde o seu dinheiro está parado '
-      + 'antes de virar prejuízo.' });
-
-    f.push({ t: T_ATO4 + 500, txt: 'Me diga o objetivo.' });
+    /* Quatro frases, uma ideia em cada, nos intervalos exatos das gravações em
+       web/audio. Os números do dia não entram na fala: eles mudam toda hora e
+       vão escritos no log ao lado, onde dá para conferir com calma. A voz diz
+       o que ele é; a tela diz quanto ele já fez. */
+    f.push({ t: 600,   txt: 'Eu sou o NÓRIA, o cérebro da Pianetto.' });
+    f.push({ t: 3750,  txt: 'Leio o sistema sem escrever nada. Todo número tem contraprova.' });
+    f.push({ t: 8500,  txt: 'Mostro seu dinheiro parado antes de virar prejuízo.' });
+    f.push({ t: 11900, txt: 'Me diga o objetivo.' });
 
     falas = f;
     ditas = 0;
