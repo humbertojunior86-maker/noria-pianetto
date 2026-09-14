@@ -828,16 +828,20 @@ def receber_demandas(dados: dict = Body(...), s: dict = Depends(sessao)):
                     (m.get("canal") or "outlook", ext)):
             repetidas += 1
             continue
+        classe = m.get("classe") or "ruido"
+        # Aviso de robô e ruído não pedem resposta de ninguém: entram
+        # arquivados para a caixa não encher com a própria saída da NÓRIA.
+        estado = "arquivada" if classe in ("sistema", "ruido") else "aberta"
         novas.append(bd.inserir("demanda", {
             "empresa_id": emp, "canal": m.get("canal") or "outlook",
             "externo_id": ext, "conversa_id": m.get("conversa_id"),
             "de": m.get("de"), "para": m.get("para"),
             "assunto": m.get("assunto"), "trecho": m.get("trecho"),
             "recebida_em": m.get("recebida_em"),
-            "classe": m.get("classe") or "ruido",
+            "classe": classe,
             "assunto_operacional": m.get("assunto_operacional"),
             "quem_responde": m.get("quem_responde"), "prazo": m.get("prazo"),
-            "estado": "aberta", "link": m.get("link"),
+            "estado": estado, "link": m.get("link"),
             "criada_em": bd.agora()}))
     return {"recebidas": len(novas), "repetidas": repetidas, "ids": novas}
 
