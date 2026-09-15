@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from ferramentas import atua, base as fb      # noqa: E402,F401
+from ferramentas import bradesco               # noqa: E402
 from nucleo import bd                         # noqa: E402
 from nucleo import orquestrador as orq        # noqa: E402
 import sentinela                              # noqa: E402
@@ -185,6 +186,12 @@ ROTINAS = [
     # a empresa ficava sem ninguém olhando das 6h40 até a manhã seguinte —
     # quem abria o sistema à tarde via um cérebro parado, porque ele estava
     # mesmo. Também evitam a janela 8h-11h, que é o pico da operação no ERP.
+    # Antes da conciliação, a NÓRIA pergunta ao próprio banco: saldo e extrato
+    # dos últimos dias entram na porta `bradesco:*`, independente do OFX que
+    # alguém importou no ATUA. Sem credencial completa, fica em silêncio — a
+    # falta aparece escrita na tela de integrações, não aqui.
+    ("bradesco", "tesouraria: saldo e extrato lidos no Bradesco", 5, None,
+     lambda: bradesco.colheita_diaria(EMPRESA)),
     ("conciliacao", "conciliação diária", 6, None, conciliacao_diaria),
     ("receber90", "cobrança: a receber +90 dias", 7, {0}, None),
     ("pagar30", "contas a pagar: vencidos +30 dias", 7, {2}, None),

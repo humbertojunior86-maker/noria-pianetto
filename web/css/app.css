@@ -2587,3 +2587,18 @@ body.modo-saguao {
 @media (prefers-reduced-motion: reduce) {
   .abertura-voz-toque { animation: none; opacity: 1; }
 }
+
+/* ---------------------------------------------------------- Bradesco --- */
+.brad { margin-top: var(--e-5); padding-top: var(--e-4); border-top: 1px solid var(--linha); display: grid; gap: var(--e-3); }
+.brad-estado { display: flex; flex-wrap: wrap; gap: var(--e-2); }
+.brad-peca { font-size: var(--t-mini); padding: 2px var(--e-3); border-radius: 999px; border: 1px solid var(--linha-2); color: var(--tinta-2); }
+.brad-peca.ok { border-color: var(--acento); color: var(--acento); }
+.brad-peca.falta { border-color: var(--linha-3); color: var(--tinta-3); }
+.brad-form { display: grid; gap: var(--e-4); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.brad-form textarea { font-family: var(--mono, ui-monospace, monospace); font-size: var(--t-mini); }
+.ceo-caixa { display: grid; gap: var(--e-3); }
+.ceo-caixa-contas { display: grid; gap: var(--e-3); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.ceo-caixa-conta { padding: var(--e-3) var(--e-4); border: 1px solid var(--linha); border-radius: var(--raio, 8px); display: grid; gap: 2px; }
+.ceo-caixa-conta .rot { font-size: var(--t-mini); color: var(--tinta-3); }
+.ceo-caixa-conta .val { font-size: var(--t-lg); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.ceo-caixa-conta .apoio { font-size: var(--t-mini); color: var(--tinta-3); }

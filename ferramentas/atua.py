@@ -15,8 +15,8 @@ from pathlib import Path
 from nucleo import bd
 from .base import Ferramenta, Resultado, registrar
 
-_SEGREDO = Path(os.environ.get(
-    "NORIA_ATUA_SEGREDO", "/home/user/workspace/.secrets/jhn.json"))
+_SEGREDO = Path(os.environ.get("NORIA_ATUA_SEGREDO") or (
+    Path(os.environ.get("NORIA_SEGREDOS", "/home/user/workspace/.secrets")) / "jhn.json"))
 
 # Janela em que consultas pesadas ficam proibidas (pico de faturamento).
 JANELA_PROIBIDA = (8, 11)

@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles                               # noqa
 
 from agentes import registro as ar                                        # noqa: E402
 from ferramentas import atua, base as fb                                  # noqa: E402,F401
+from ferramentas import bradesco                                          # noqa: E402
 from nucleo import bd, orquestrador as orq                                # noqa: E402
 
 app = FastAPI(title="NÓRIA", version="1.0", docs_url="/api/docs")
@@ -1286,6 +1287,59 @@ def retrato(s: dict = Depends(sessao)):
     return {"equipe": equipe, "numeros": numeros, "marcos": marcos,
             "desde": nasc, "agora": bd.agora()}
 
+
+
+# ------------------------------------------------------------------ Bradesco
+# Segunda porta do dinheiro. Credencial só entra pelo CEO e nunca volta
+# inteira: a tela vê o Client ID mascarado e se certificado/chave existem.
+def _so_ceo(s: dict) -> None:
+    if (s["usuario"]["papel"] or "") != "ceo":
+        raise HTTPException(403, "só o CEO grava credencial de banco")
+
+
+@app.get("/api/integracoes/bradesco/config")
+def bradesco_config(s: dict = Depends(sessao)):
+    if (s["usuario"]["papel"] or "") not in ("ceo", "gestor"):
+        raise HTTPException(403, "sem permissão para ver a configuração do banco")
+    return bradesco.estado_config()
+
+
+@app.post("/api/integracoes/bradesco/config")
+def bradesco_gravar(dados: dict = Body(...), s: dict = Depends(sessao)):
+    _so_ceo(s)
+    if dados.get("ambiente") and dados["ambiente"] not in bradesco.HOSTS:
+        raise HTTPException(422, "ambiente precisa ser sandbox, homologacao ou producao")
+    if dados.get("fluxo") and dados["fluxo"] not in ("auto", "client_credentials", "jwt"):
+        raise HTTPException(422, "fluxo precisa ser auto, client_credentials ou jwt")
+    bradesco.gravar_config(dados)
+    bradesco.garantir_registro(s["empresa_id"])
+    lim = bradesco.limitacao()
+    bd.executar(
+        "UPDATE integracao SET estado='nao_configurada', ultimo_erro=?, ambiente=? "
+        "WHERE id='bradesco' AND empresa_id=?",
+        (lim or "credencial gravada; ainda não testada", bradesco.ler_config().get("ambiente", "producao"),
+         s["empresa_id"]))
+    mudou = [k for k in ("client_id", "client_secret", "certificado_pem", "chave_privada_pem",
+                         "ambiente", "fluxo", "contas") if k in dados and dados[k] not in (None, "")]
+    bd.evento(s["empresa_id"], "integracao.credencial",
+              f"Bradesco: {s['usuario']['nome']} gravou {', '.join(mudou) or 'nada'}.",
+              ator=f"usuario:{s['usuario']['id']}")
+    return {"ok": True, "config": bradesco.estado_config()}
+
+
+@app.get("/api/tesouraria/bradesco")
+def tesouraria_bradesco(s: dict = Depends(sessao)):
+    return bradesco.retrato(s["empresa_id"])
+
+
+@app.post("/api/tesouraria/bradesco/colher")
+def tesouraria_bradesco_colher(s: dict = Depends(sessao)):
+    if (s["usuario"]["papel"] or "") not in ("ceo", "gestor"):
+        raise HTTPException(403, "sem permissão para acionar a colheita")
+    lim = bradesco.limitacao()
+    if lim:
+        return {"ok": False, "motivo": lim}
+    return bradesco.colher(s["empresa_id"])
 
 
 # ------------------------------------------------------------------- estático

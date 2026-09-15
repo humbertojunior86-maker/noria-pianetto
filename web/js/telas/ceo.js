@@ -1655,6 +1655,61 @@ function linhaAto(a) {
   ]);
 }
 
+/* ------------------------------------------------------- caixa no banco --
+   Segunda porta do dinheiro: o saldo que o próprio Bradesco respondeu, com a
+   hora da resposta. Sem credencial ou com o banco recusando, o bloco diz o
+   motivo por escrito — nunca mostra zero no lugar do saldo que não veio. */
+function blocoCaixaBanco() {
+  const corpo = el('div.ceo-caixa');
+  const no = painel({
+    titulo: 'Caixa no banco',
+    nota: 'saldo lido direto do Bradesco por API, uma vez por dia às 5h e sob comando. Raiz bradesco:*, independente do OFX importado no ATUA.',
+    corpo: [corpo],
+  });
+
+  async function atualizar() {
+    let d;
+    try {
+      d = await api.tesourariaBradesco();
+    } catch (e) {
+      limpar(corpo);
+      juntar(corpo, numerao({ rotulo: 'Saldo no Bradesco', motivo: e && e.message ? e.message : 'erro inesperado' }));
+      return;
+    }
+    limpar(corpo);
+    const contas = Array.isArray(d.contas) ? d.contas : [];
+    const comSaldo = contas.filter((c) => c.saldo && typeof c.saldo.disponivel === 'number');
+    if (!comSaldo.length) {
+      juntar(corpo, numerao({
+        rotulo: 'Saldo no Bradesco',
+        motivo: d.motivo || 'o banco ainda não respondeu nenhuma leitura',
+      }));
+      juntar(corpo, el('p.ajuda', { texto: 'A credencial entra em Integrações › Bradesco. O bloco acende sozinho na primeira leitura que o banco responder.' }));
+      return;
+    }
+    if (typeof d.total_disponivel === 'number') {
+      juntar(corpo, numerao({
+        rotulo: `Disponível em ${f.numero(comSaldo.length)} conta(s)`,
+        valor: f.dinheiro(d.total_disponivel),
+        apoio: [el('span', { texto: `última leitura ${f.dataHora(comSaldo.map((c) => c.saldo.apurado_em).sort().pop())}` })],
+      }));
+    }
+    juntar(corpo, el('div.ceo-caixa-contas', null, contas.map((c) => el('div.ceo-caixa-conta', null, [
+      el('span.rot', { texto: `${c.apelido || 'Conta'} · ag. ${c.agencia} · c/c ${c.conta}` }),
+      el('span.val', { texto: c.saldo && typeof c.saldo.disponivel === 'number' ? f.dinheiro(c.saldo.disponivel) : 'sem leitura' }),
+      el('span.apoio', {
+        texto: c.saldo ? `lido ${f.dataHora(c.saldo.apurado_em)} · ${f.numero(c.movimentos || 0)} movimento(s) guardado(s)`
+          : (d.motivo || 'o banco não respondeu esta conta'),
+      }),
+    ]))));
+    if (d.integracao && d.integracao.ultimo_erro && d.integracao.estado === 'erro') {
+      juntar(corpo, el('p.aviso-linha', null, [icone('alerta', 14), `Última colheita com falha: ${d.integracao.ultimo_erro}`]));
+    }
+  }
+
+  return { no, atualizar };
+}
+
 function blocoAutonomia() {
   const corpo = el('div.ceo-auto');
   const no = painel({
@@ -1881,7 +1936,8 @@ export async function montar(raiz, _params, { pulso, ir }) {
   const auto = blocoAutonomia();
   const vig = blocoVigias();
   const ent = blocoEntregaveis();
-  juntar(caixa, [barra, painelDados, ritmo.no, auto.no, vig.no, ent.no, pensa.no, resto, fluxo]);
+  const caixaBanco = blocoCaixaBanco();
+  juntar(caixa, [barra, painelDados, caixaBanco.no, ritmo.no, auto.no, vig.no, ent.no, pensa.no, resto, fluxo]);
   juntar(raiz, caixa);
 
   let timer = 0;
@@ -1910,6 +1966,7 @@ export async function montar(raiz, _params, { pulso, ir }) {
       auto.atualizar();
       vig.atualizar();
       ent.atualizar();
+      caixaBanco.atualizar();
       limpar(painelDados);
       juntar(painelDados, faixaNumeros(d));
       limpar(resto);

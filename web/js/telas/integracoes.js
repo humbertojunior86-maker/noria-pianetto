@@ -4,7 +4,128 @@ import * as api from '../api.js';
 import * as f from '../fmt.js';
 import { el, juntar, limpar, painel, vazio, etiqueta, icone, secao, par, metrica, carregando } from '../ui.js';
 
-function cartao(i, recarregar) {
+/* ------------------------------------------------------------- Bradesco --
+   Credencial entra aqui e nunca volta inteira: a tela vê o Client ID mascarado
+   e se certificado e chave existem. Campo vazio não apaga o que já foi
+   gravado — dá para reenviar só a parte que mudou. */
+function campo(rotulo, entrada, ajuda) {
+  return el('div.campo', null, [
+    el('label', { texto: rotulo }),
+    entrada,
+    ajuda ? el('span.ajuda', { texto: ajuda }) : null,
+  ]);
+}
+
+function pecaEstado(ok, texto) {
+  return el('span.brad-peca' + (ok ? '.ok' : '.falta'), { texto: `${ok ? 'tem' : 'falta'} ${texto}` });
+}
+
+function blocoBradesco(i, contexto, recarregar) {
+  const papel = contexto && contexto.ctx && contexto.ctx.usuario ? contexto.ctx.usuario.papel : '';
+  const podeVer = papel === 'ceo' || papel === 'gestor';
+  const podeGravar = papel === 'ceo';
+  const caixa = el('div.brad');
+  if (!podeVer) {
+    juntar(caixa, el('p.ajuda', { texto: 'A configuração do banco só aparece para CEO e gestor.' }));
+    return caixa;
+  }
+
+  async function desenhar() {
+    limpar(caixa);
+    juntar(caixa, carregando(2));
+    let c;
+    try {
+      c = await api.bradescoConfig();
+    } catch (e) {
+      limpar(caixa);
+      juntar(caixa, el('div.aviso-erro', { texto: `Não deu para ler a configuração: ${e.message}` }));
+      return;
+    }
+    limpar(caixa);
+
+    juntar(caixa, el('div.brad-estado', null, [
+      pecaEstado(c.tem_client_id, c.tem_client_id ? `Client ID ${c.client_id_mascarado}` : 'Client ID'),
+      pecaEstado(c.tem_client_secret, 'Client Secret'),
+      pecaEstado(c.tem_certificado, 'certificado público'),
+      pecaEstado(c.tem_chave_privada, 'chave privada'),
+      pecaEstado((c.contas || []).length > 0, (c.contas || []).length
+        ? `${c.contas.length} conta(s) para consultar` : 'conta para consultar'),
+    ]));
+    juntar(caixa, el('p.ajuda', {
+      texto: `Ambiente ${c.ambiente} · ${c.host} · autenticação ${c.fluxo_confirmado
+        ? `confirmada: ${c.fluxo_confirmado}` : `${c.fluxo} (ainda não confirmada pelo banco)`}`,
+    }));
+    if (c.limitacao) {
+      juntar(caixa, el('p.aviso-linha', null, [icone('alerta', 14),
+        `Ainda não consulta o banco — ${c.limitacao}.`]));
+    }
+
+    if (!podeGravar) return;
+
+    const cid = el('input', { type: 'text', autocomplete: 'off', placeholder: c.tem_client_id ? 'já gravado — preencha só para trocar' : 'Client ID do portal Bradesco Developers' });
+    const csec = el('input', { type: 'password', autocomplete: 'new-password', placeholder: c.tem_client_secret ? 'já gravado — preencha só para trocar' : 'Client Secret (visível 3 dias no portal)' });
+    const amb = el('select');
+    [['producao', 'produção — openapi.bradesco.com.br'], ['sandbox', 'sandbox — openapisandbox.prebanco.com.br'],
+      ['homologacao', 'homologação — proxy.api.prebanco.com.br']].forEach(([v, t]) => {
+      const o = el('option', { value: v, texto: t });
+      if (v === c.ambiente) o.selected = true;
+      amb.appendChild(o);
+    });
+    const fluxo = el('select');
+    [['auto', 'automático — JWT primeiro, depois credencial cliente/segredo'], ['client_credentials', 'credencial cliente/segredo (portal novo)'],
+      ['jwt', 'JWT assinado com a chave privada (o que o banco reconheceu)']].forEach(([v, t]) => {
+      const o = el('option', { value: v, texto: t });
+      if (v === c.fluxo) o.selected = true;
+      fluxo.appendChild(o);
+    });
+    const cert = el('textarea', { placeholder: c.tem_certificado ? 'já gravado — cole só para trocar' : '-----BEGIN CERTIFICATE----- … (ou só o corpo em base64, como o portal aceita)', rows: 4, spellcheck: 'false' });
+    const chave = el('textarea', { placeholder: c.tem_chave_privada ? 'já gravada — cole só para trocar' : '-----BEGIN PRIVATE KEY----- … (a chave do MESMO certificado enviado ao portal)', rows: 4, spellcheck: 'false' });
+    const contas = el('textarea', {
+      rows: 3, spellcheck: 'false',
+      placeholder: 'uma conta por linha: agência;conta;tipo;apelido\nex.: 1234;0012345;cc;Conta movimento',
+    });
+    contas.value = (c.contas || []).map((k) => [k.agencia, k.conta, k.tipo || 'cc', k.apelido || ''].join(';')).join('\n');
+
+    const retorno = el('p.ajuda');
+    const salvar = el('button.btn.btn-forte.btn-peq', { type: 'button' }, [icone('integracoes', 14), el('span', { texto: 'Gravar credencial' })]);
+    salvar.onclick = async () => {
+      salvar.disabled = true;
+      retorno.textContent = 'Gravando no servidor da NÓRIA (arquivo restrito, fora do banco de dados)…';
+      const dados = { ambiente: amb.value, fluxo: fluxo.value, contas: contas.value };
+      if (cid.value.trim()) dados.client_id = cid.value.trim();
+      if (csec.value.trim()) dados.client_secret = csec.value.trim();
+      if (cert.value.trim()) dados.certificado_pem = cert.value;
+      if (chave.value.trim()) dados.chave_privada_pem = chave.value;
+      try {
+        await api.bradescoGravar(dados);
+        retorno.textContent = 'Gravado. Use "Testar conexão" para pedir um token real ao banco.';
+        setTimeout(() => { desenhar(); recarregar(); }, 700);
+      } catch (e) {
+        retorno.textContent = `Não gravou: ${e.message}`;
+      } finally {
+        salvar.disabled = false;
+      }
+    };
+
+    juntar(caixa, [
+      el('div.brad-form', null, [
+        campo('Client ID', cid),
+        campo('Client Secret', csec, 'guardado em arquivo com permissão 600; nunca volta para a tela'),
+        campo('Ambiente', amb),
+        campo('Autenticação', fluxo),
+        campo('Certificado público (PEM)', cert, 'o mesmo arquivo enviado ao portal na hora de gerar a credencial'),
+        campo('Chave privada (PEM)', chave, 'sem ela não existe chamada: o banco exige TLS mútuo com este par'),
+        campo('Contas a consultar', contas, 'agência com 4 dígitos sem DV, conta com 7 dígitos; tipo cc ou cp'),
+      ]),
+      el('div.linha-acoes', { style: 'margin-top:12px' }, [salvar, retorno]),
+    ]);
+  }
+
+  desenhar();
+  return caixa;
+}
+
+function cartao(i, contexto, recarregar) {
   const r = f.estadoIntegracao(i.estado);
   const retorno = el('p.ajuda', { style: 'margin-top:12px' });
 
@@ -42,11 +163,12 @@ function cartao(i, recarregar) {
         : null,
       el('div.linha-acoes', { style: 'margin-top:16px' }, btn),
       retorno,
+      i.id === 'bradesco' ? blocoBradesco(i, contexto, recarregar) : null,
     ],
   });
 }
 
-export async function montar(raiz, _params, _contexto) {
+export async function montar(raiz, _params, contexto) {
   const alvo = el('div');
   juntar(raiz, secao(null,
     'O estado vem do banco e do último teste executado. O teste consulta o destino de verdade — nunca é simulado.',
@@ -74,7 +196,7 @@ export async function montar(raiz, _params, _contexto) {
         metrica('Com permissão de escrita', f.numero(escrita.length),
           escrita.length ? 'exigem aprovação humana por ação' : 'nenhuma escrita autorizada'),
       ]),
-      el('div.grade.g2', { style: 'gap:24px' }, itens.map((i) => cartao(i, carregar))),
+      el('div.grade.g2', { style: 'gap:24px' }, itens.map((i) => cartao(i, contexto, carregar))),
     ]);
   }
 

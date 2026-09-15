@@ -349,6 +349,41 @@ CREATE TABLE IF NOT EXISTS integracao (
   ambiente      TEXT NOT NULL DEFAULT 'producao'  -- producao | demonstracao
 );
 
+-- ------------------------------------------------ dinheiro lido do banco
+-- Segunda porta do caixa: o que o próprio banco respondeu, com carimbo.
+CREATE TABLE IF NOT EXISTS banco_saldo (
+  id            INTEGER PRIMARY KEY,
+  empresa_id    INTEGER NOT NULL REFERENCES empresa(id),
+  banco         TEXT NOT NULL,        -- código COMPE, ex. 237
+  agencia       TEXT NOT NULL,
+  conta         TEXT NOT NULL,
+  apurado_em    TEXT NOT NULL,
+  disponivel    REAL,
+  linhas        TEXT,                 -- json [{produto, codigo, valor}]
+  status_conta  TEXT,
+  fonte         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_banco_saldo_conta ON banco_saldo(empresa_id, agencia, conta, apurado_em);
+
+CREATE TABLE IF NOT EXISTS banco_movimento (
+  id            INTEGER PRIMARY KEY,
+  empresa_id    INTEGER NOT NULL REFERENCES empresa(id),
+  banco         TEXT NOT NULL,
+  agencia       TEXT NOT NULL,
+  conta         TEXT NOT NULL,
+  data          TEXT NOT NULL,
+  valor         REAL NOT NULL,        -- negativo = débito
+  documento     TEXT,
+  descricao     TEXT,
+  tipo          TEXT,
+  codigo        TEXT,
+  saldo_apos    REAL,
+  hash          TEXT NOT NULL UNIQUE,
+  colhido_em    TEXT NOT NULL,
+  fonte         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_banco_mov_conta ON banco_movimento(empresa_id, agencia, conta, data);
+
 -- -------------------------------------------------------- limites e consumo
 CREATE TABLE IF NOT EXISTS limite (
   id            INTEGER PRIMARY KEY,

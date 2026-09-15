@@ -77,6 +77,8 @@ def main() -> None:
         ("atua", "ATUA (ERP)", "banco_de_dados", ["leitura"], 0,
          "conectada" if fb.obter("atua").disponivel() else "nao_configurada",
          fb.obter("atua").limitacao),
+        ("bradesco", "Bradesco (saldo e extrato)", "api", ["leitura"], 0,
+         "nao_configurada", "credencial não fornecida"),
         ("x7bank", "X7 Bank (combustível)", "api", ["leitura"], 0,
          "nao_configurada", "credencial não fornecida"),
         ("gobrax", "Gobrax (telemetria)", "api", ["leitura"], 0,
