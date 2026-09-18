@@ -25,7 +25,6 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import urllib.request
 
 # Quantas linhas cabem no corpo do e-mail antes de virar parede. O resto vai
@@ -92,38 +91,39 @@ def rotulo(c: str) -> str:
 
 
 # --------------------------------------------------------------------- e-mail
-def tabela(bloco: dict) -> str:
+def tabela(bloco: dict, corte: int) -> str:
+    """Tabela enxuta de propósito. O pedido ao correio viaja como argumento de
+    linha de comando, e argumento tem teto: HTML gordo não chega a ninguém."""
     linhas = bloco["linhas"]
     if not linhas:
         return ""
     cols = list(linhas[0].keys())
+    num = {bloco["campo_valor"], "frete", "valor_carga"}
     cab = "".join(
-        f'<th style="text-align:{"right" if c==bloco["campo_valor"] else "left"};'
-        f'padding:6px 8px;border-bottom:1px solid #cbd5e1;font:700 11px/1.3 Arial;'
-        f'color:#0f172a;white-space:nowrap">{rotulo(c)}</th>' for c in cols)
+        f'<th align="{"right" if c in num else "left"}">{rotulo(c)}</th>'
+        for c in cols)
     corpo = []
-    for i, ln in enumerate(linhas[:NO_CORPO]):
-        fundo = "#ffffff" if i % 2 == 0 else "#f8fafc"
+    for ln in linhas[:corte]:
         tds = []
         for c in cols:
             v = ln.get(c)
-            num = c == bloco["campo_valor"] or c in ("frete", "valor_carga")
-            txt = reais(v) if num else ("" if v is None else str(v))
-            tds.append(f'<td style="text-align:{"right" if num else "left"};'
-                       f'padding:5px 8px;border-bottom:1px solid #e2e8f0;'
-                       f'font:400 11px/1.4 Arial;color:#334155;'
-                       f'white-space:nowrap">{txt}</td>')
-        corpo.append(f'<tr style="background:{fundo}">' + "".join(tds) + "</tr>")
+            txt = reais(v) if c in num else ("" if v is None else str(v))
+            tds.append(f'<td align="{"right" if c in num else "left"}">{txt}</td>')
+        corpo.append("<tr>" + "".join(tds) + "</tr>")
     resto = ""
-    if len(linhas) > NO_CORPO:
+    if len(linhas) > corte:
         resto = ('<div style="font:400 12px/1.5 Arial;color:#64748b;margin-top:8px">'
-                 f'Mais {len(linhas) - NO_CORPO} carta(s) frete na planilha em '
+                 f'Mais {len(linhas) - corte} carta(s) frete na planilha em '
                  'anexo. Aqui estão as de maior valor.</div>')
-    return ('<table style="width:100%;border-collapse:collapse;margin-top:10px">'
-            f'<tr>{cab}</tr>{"".join(corpo)}</table>' + resto)
+    return ('<table cellpadding="5" cellspacing="0" border="0" '
+            'style="width:100%;border-collapse:collapse;margin-top:10px;'
+            'font:400 11px/1.4 Arial;color:#334155">'
+            f'<tr style="font-weight:700;color:#0f172a;'
+            f'border-bottom:1px solid #cbd5e1">{cab}</tr>'
+            f'{"".join(corpo)}</table>' + resto)
 
 
-def secao(bloco: dict) -> str:
+def secao(bloco: dict, corte: int) -> str:
     titulo, explica = TITULOS.get(bloco["chave"], (bloco.get("nome", ""), ""))
     if not bloco.get("ok"):
         return ('<div style="margin-top:26px">'
@@ -141,10 +141,10 @@ def secao(bloco: dict) -> str:
     if not bloco["linhas"]:
         return cabeca + ('<div style="font:400 12px/1.5 Arial;color:#15803d;'
                          'margin-top:6px">Nenhuma ocorrência hoje.</div></div>')
-    return cabeca + tabela(bloco) + "</div>"
+    return cabeca + tabela(bloco, corte) + "</div>"
 
 
-def montar(blocos: list[dict]) -> tuple[str, str, str]:
+def montar(blocos: list[dict], corte: int = NO_CORPO) -> tuple[str, str, str]:
     a = next((b for b in blocos if b["chave"] == "descontado_de_quem_nao_pode"), {})
     b = next((b for b in blocos if b["chave"] == "sem_desconto_de_quem_devia"), {})
     partes = []
@@ -163,7 +163,7 @@ def montar(blocos: list[dict]) -> tuple[str, str, str]:
         'carga. Todo número saiu do ATUA na hora desta leitura. O enquadramento '
         'vem do próprio CT-e: ETC e cooperativa sofrem desconto, TAC e '
         'equiparado a TAC não.</div>'
-        + "".join(secao(x) for x in blocos)
+        + "".join(secao(x, corte) for x in blocos)
         + '<div style="font:400 12px/1.5 Arial;color:#94a3b8;margin-top:22px">'
         f'Sala do CEO: {NORIA}</div></div>')
     texto = "\n".join(
@@ -177,7 +177,10 @@ def montar(blocos: list[dict]) -> tuple[str, str, str]:
 def planilhas(blocos: list[dict]) -> list[str]:
     """Uma planilha por lista, com TODAS as cartas frete. O corpo do e-mail
     mostra as maiores; o anexo carrega a conferência inteira."""
-    fora, pasta = [], tempfile.mkdtemp(prefix="noria-seguro-")
+    pasta = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "anexos")
+    os.makedirs(pasta, exist_ok=True)
+    fora = []
     for b in blocos:
         if not b.get("ok") or not b.get("linhas"):
             continue
@@ -200,7 +203,15 @@ def rodar() -> dict:
     falhou = [x for x in blocos if not x.get("ok")]
     if not achou and not falhou:
         return {"enviado": False, "motivo": "nenhuma ocorrência hoje"}
-    assunto, html, texto = montar(blocos)
+    # O pedido ao correio vira um argumento de linha de comando: acima de
+    # ~100 mil caracteres o sistema recusa. Encolhe o corpo até caber; a
+    # planilha em anexo continua com todas as cartas frete.
+    corte = NO_CORPO
+    while True:
+        assunto, html, texto = montar(blocos, corte)
+        if len(html) <= 90000 or corte <= 5:
+            break
+        corte = max(5, corte // 2)
     anexos = planilhas(blocos)
     pedido = {"action": "send", "to": DESTINOS, "cc": [], "bcc": [],
               "subject": assunto, "html_body": html, "body": texto}
