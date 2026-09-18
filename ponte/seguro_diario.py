@@ -73,6 +73,11 @@ def outlook(ferramenta: str, entrada: dict) -> dict:
     if p.returncode != 0:
         raise RuntimeError(p.stderr[:500])
     r = json.loads(p.stdout)
+    if r.get("requires_auth"):
+        # O correio devolve isso com codigo de saida 0. Sem este teste, uma
+        # conexao vencida vira "enviado com sucesso" e ninguem recebe nada.
+        raise RuntimeError("OUTLOOK DESCONECTADO: o conector pediu nova "
+                           "autorizacao. Nenhum e-mail saiu.")
     if r.get("is_error"):
         raise RuntimeError(str(r.get("error"))[:500])
     return r.get("result") or {}
