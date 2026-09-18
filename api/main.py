@@ -1342,6 +1342,51 @@ def tesouraria_bradesco_colher(s: dict = Depends(sessao)):
     return bradesco.colher(s["empresa_id"])
 
 
+# -------------------------------------------------------------------- seguro
+# A conferência diária do seguro dos terceiros, carga por carga. Devolve as
+# linhas inteiras (não a amostra de cinco do painel), porque quem lê isto é o
+# e-mail que vai para a controladoria e para o fiscal e precisa do CT-e.
+SEGURO_VIGIAS = (
+    (21, "descontado_de_quem_nao_pode", "seguro_descontado"),
+    (22, "sem_desconto_de_quem_devia", "margem_nao_descontada"),
+)
+
+
+@app.get("/api/seguro/diario")
+def seguro_diario(s: dict = Depends(sessao)):
+    from pensamento import prova
+
+    blocos = []
+    for vid, chave, campo in SEGURO_VIGIAS:
+        v = bd.linha("SELECT * FROM vigia WHERE id=?", (vid,))
+        if not v:
+            blocos.append({"chave": chave, "vigia_id": vid, "ok": False,
+                           "motivo": f"o vigia {vid} não existe mais"})
+            continue
+        if v["estado"] not in ("ativo", "observacao"):
+            blocos.append({"chave": chave, "vigia_id": vid, "ok": False,
+                           "motivo": f"o vigia {vid} está {v['estado']}"})
+            continue
+        try:
+            r = prova.rodar_sql(v["consulta"], respeitar_janela=False)
+        except Exception as e:  # noqa: BLE001
+            blocos.append({"chave": chave, "vigia_id": vid, "ok": False,
+                           "motivo": str(e)[:300]})
+            continue
+        linhas = r["linhas"]
+        total = 0.0
+        for ln in linhas:
+            try:
+                total += float(ln.get(campo) or 0)
+            except (TypeError, ValueError):
+                pass
+        blocos.append({"chave": chave, "vigia_id": vid, "ok": True,
+                       "nome": v["nome"], "apelido": v["apelido"],
+                       "campo_valor": campo, "qt": len(linhas),
+                       "total": round(total, 2), "linhas": linhas})
+    return {"quando": bd.agora(), "blocos": blocos}
+
+
 # ------------------------------------------------------------------- estático
 WEB = RAIZ / "web"
 if WEB.is_dir():
