@@ -15,6 +15,7 @@ LIMITE_MAX = 5000
 
 TABELAS_OK = {
     "titulo", "titulo_pagamento", "movimento", "ctrc", "ctrc_cte",
+    "carta_frete",
     "ctrc_produto", "produto_transportado", "pessoa", "cliente",
     "veiculo", "veiculo_proprio", "motorista", "viagem", "manifesto",
     "documento_eletronico", "cidade", "estado", "conta", "portador",
