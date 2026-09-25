@@ -108,7 +108,12 @@ def classificar(e: dict) -> dict:
     trecho = (e.get("snippet") or e.get("summary") or "")[:600]
     baixo = (assunto + " " + trecho).lower()
 
-    if "não é possível entregar" in baixo or "undeliverable" in baixo:
+    if assunto.strip().upper().startswith(("NÓRIA", "NORIA")):
+        # Eco da propria NORIA: o que ela mandou volta pela caixa conectada.
+        # Sem este filtro, cada aviso enviado renascia como demanda de cliente.
+        classe, tema, area = "sistema", "eco de aviso da própria NÓRIA", \
+            "Tecnologia"
+    elif "não é possível entregar" in baixo or "undeliverable" in baixo:
         classe, tema, area = "sistema", "e-mail que não chegou ao destino", \
             "Tecnologia"
     elif any(r in de for r in ROBOS):
