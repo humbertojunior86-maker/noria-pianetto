@@ -54,6 +54,7 @@ def transacao():
 _COLUNAS_NOVAS: list[tuple[str, str, str]] = [
     ("criterio", "tarefa_chave", "TEXT"),
     ("vigia", "apelido", "TEXT"),
+    ("vigia_execucao", "todas", "TEXT"),
 ]
 
 

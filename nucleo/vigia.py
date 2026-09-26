@@ -187,6 +187,9 @@ def rodar(vid: int, respeitar_janela: bool = True) -> dict:
         "vigia_id": vid, "quando": agora, "ok": 1, "linhas": qt,
         "valor": round(valor, 2), "achou": 1 if achou else 0,
         "amostra": json.dumps(linhas[:5], ensure_ascii=False, default=str),
+        # Quem recebe o aviso precisa da lista inteira, carga por carga, e não
+        # só do total: sem o CTRC na mão ninguém corrige nada.
+        "todas": json.dumps(linhas[:5000], ensure_ascii=False, default=str),
     })
     bd.executar(
         "UPDATE vigia SET execucoes=execucoes+1, falhas_seguidas=0, "

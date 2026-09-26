@@ -795,10 +795,21 @@ def saguao(s: dict = Depends(sessao)):
 @app.get("/api/avisos")
 def listar_avisos(s: dict = Depends(sessao), estado: str = "pendente",
                   limite: int = Query(50, le=200)):
-    return {"avisos": bd.linhas(
+    avs = bd.linhas(
         "SELECT * FROM aviso WHERE empresa_id=? AND estado=? "
         "ORDER BY CASE gravidade WHEN 'alta' THEN 0 ELSE 1 END, id "
-        "LIMIT ?", (s["empresa_id"], estado, limite))}
+        "LIMIT ?", (s["empresa_id"], estado, limite))
+    # O aviso de vigia leva junto as linhas que o geraram (CTRC, carta frete,
+    # transportador), para o e-mail sair com a lista e não só com o total.
+    for a in avs:
+        ex = bd.linha("SELECT todas, amostra FROM vigia_execucao "
+                      "WHERE aviso_id=? ORDER BY id DESC LIMIT 1", (a["id"],))
+        bruto = ex and (ex.get("todas") or ex.get("amostra"))
+        try:
+            a["linhas"] = json.loads(bruto) if bruto else []
+        except ValueError:
+            a["linhas"] = []
+    return {"avisos": avs}
 
 
 @app.post("/api/avisos/{aid}/entregue")

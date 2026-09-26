@@ -558,7 +558,8 @@ CREATE TABLE IF NOT EXISTS vigia_execucao (
   achou         INTEGER NOT NULL DEFAULT 0,
   aviso_id      INTEGER REFERENCES aviso(id),
   erro          TEXT,
-  amostra       TEXT                     -- json das primeiras linhas
+  amostra       TEXT,                    -- json das primeiras linhas
+  todas         TEXT                     -- json de todas as linhas (até 5000)
 );
 CREATE INDEX IF NOT EXISTS ix_vigia_exec ON vigia_execucao(vigia_id, id DESC);
 
