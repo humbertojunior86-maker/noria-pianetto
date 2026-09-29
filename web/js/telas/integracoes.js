@@ -107,6 +107,36 @@ function blocoBradesco(i, contexto, recarregar) {
       }
     };
 
+    // .pfx do e-CNPJ: o servidor separa certificado e chave e confere o par.
+    const pfxArq = el('input', { type: 'file', accept: '.pfx,.p12' });
+    const pfxSenha = el('input', { type: 'password', autocomplete: 'new-password', placeholder: 'senha do certificado (não é gravada)' });
+    const pfxRet = el('p.ajuda');
+    const pfxBtn = el('button.btn.btn-forte.btn-peq', { type: 'button' }, [icone('integracoes', 14), el('span', { texto: 'Importar .pfx' })]);
+    pfxBtn.onclick = async () => {
+      const arq = pfxArq.files && pfxArq.files[0];
+      if (!arq) { pfxRet.textContent = 'Escolha o arquivo .pfx primeiro.'; return; }
+      pfxBtn.disabled = true;
+      pfxRet.textContent = 'Abrindo o certificado no servidor da NÓRIA…';
+      try {
+        const buf = new Uint8Array(await arq.arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+        const r = await api.bradescoPfx({ pfx_base64: btoa(bin), senha: pfxSenha.value });
+        pfxSenha.value = '';
+        pfxRet.textContent = `Certificado e chave gravados e conferidos. ${r.certificado || ''}`;
+        setTimeout(() => { desenhar(); recarregar(); }, 900);
+      } catch (e) {
+        pfxRet.textContent = `Não importou: ${e.message}`;
+      } finally {
+        pfxBtn.disabled = false;
+      }
+    };
+    juntar(caixa, el('div.brad-form', { style: 'margin-bottom:14px' }, [
+      campo('Arquivo .pfx do e-CNPJ', pfxArq, 'o jeito mais simples: traz certificado e chave juntos'),
+      campo('Senha do .pfx', pfxSenha, 'usada só para abrir o arquivo; não fica gravada em lugar nenhum'),
+    ]));
+    juntar(caixa, el('div.linha-acoes', { style: 'margin-bottom:18px' }, [pfxBtn, pfxRet]));
+
     juntar(caixa, [
       el('div.brad-form', null, [
         campo('Client ID', cid),

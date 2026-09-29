@@ -108,6 +108,68 @@ def gravar_config(novo: dict) -> dict:
     return cfg
 
 
+def _pkcs12(caminho: str, senha: str, *args: str) -> str:
+    """Roda `openssl pkcs12` com a senha por variável de ambiente do filho.
+
+    A senha nunca entra na linha de comando (ps não mostra) e não é gravada.
+    Tenta primeiro sem e depois com `-legacy`, porque e-CNPJ A1 de várias
+    ACs ainda sai cifrado com RC2/3DES, que o OpenSSL 3 só abre em modo legado.
+    """
+    amb = {**os.environ, "NORIA_PFX_SENHA": senha}
+    ultimo = ""
+    for extra in ([], ["-legacy"]):
+        r = subprocess.run(["openssl", "pkcs12", "-in", caminho, *extra,
+                            "-passin", "env:NORIA_PFX_SENHA", *args],
+                           capture_output=True, text=True, env=amb, timeout=30)
+        if r.returncode == 0 and "-----BEGIN" in r.stdout:
+            return r.stdout
+        ultimo = (r.stderr or "").strip()
+    if "invalid password" in ultimo.lower() or "mac verify" in ultimo.lower():
+        raise ValueError("senha do certificado não confere")
+    raise ValueError(f"não consegui abrir o arquivo .pfx: {ultimo[:200]}")
+
+
+def _bloco(txt: str, tipo: str) -> str:
+    ini = txt.find(f"-----BEGIN {tipo}")
+    fim_marca = f"-----END {tipo}"
+    fim = txt.find(fim_marca, ini)
+    if ini < 0 or fim < 0:
+        return ""
+    fim = txt.find("-----", fim + len(fim_marca)) + 5
+    return txt[ini:fim].strip() + "\n"
+
+
+def importar_pfx(pfx: bytes, senha: str) -> dict:
+    """Separa certificado e chave privada de um .pfx/.p12 (e-CNPJ A1).
+
+    Confere que a chave é o par do certificado antes de gravar qualquer coisa:
+    chave de outro certificado é justamente o que o banco recusa com 104.
+    """
+    with tempfile.TemporaryDirectory() as d:
+        arq = os.path.join(d, "c.pfx")
+        with open(arq, "wb") as f:
+            f.write(pfx)
+        cert = _bloco(_pkcs12(arq, senha, "-clcerts", "-nokeys"), "CERTIFICATE")
+        chave_txt = _pkcs12(arq, senha, "-nocerts", "-nodes")
+        chave = _bloco(chave_txt, "PRIVATE KEY") or _bloco(chave_txt, "RSA PRIVATE KEY")
+        if not cert or not chave:
+            raise ValueError("o arquivo não trouxe certificado e chave privada juntos")
+        cp, kp = os.path.join(d, "c.pem"), os.path.join(d, "k.pem")
+        open(cp, "w").write(cert)
+        open(kp, "w").write(chave)
+        pub_c = subprocess.run(["openssl", "x509", "-in", cp, "-noout", "-pubkey"],
+                               capture_output=True, text=True).stdout
+        pub_k = subprocess.run(["openssl", "pkey", "-in", kp, "-pubout"],
+                               capture_output=True, text=True).stdout
+        if not pub_c or pub_c.strip() != pub_k.strip():
+            raise ValueError("a chave privada do arquivo não é o par do certificado")
+        info = subprocess.run(["openssl", "x509", "-in", cp, "-noout", "-subject",
+                               "-enddate", "-fingerprint", "-sha256"],
+                              capture_output=True, text=True).stdout
+    gravar_config({"certificado_pem": cert, "chave_privada_pem": chave})
+    return {"ok": True, "certificado": info.strip()}
+
+
 def _normalizar_pem(txt: str) -> str:
     txt = txt.strip().replace("\r", "")
     if "-----BEGIN" in txt:

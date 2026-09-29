@@ -125,6 +125,7 @@ export const decidir = (id, decisao, observacao) =>
   pedir(`/aprovacoes/${id}`, { metodo: 'POST', corpo: { decisao, observacao } });
 export const testarIntegracao = (id) => pedir(`/integracoes/${id}/testar`, { metodo: 'POST', corpo: {} });
 export const bradescoConfig = () => pedir('/integracoes/bradesco/config');
+export const bradescoPfx = (dados) => pedir('/integracoes/bradesco/pfx', { metodo: 'POST', corpo: dados });
 export const bradescoGravar = (dados) => pedir('/integracoes/bradesco/config', { metodo: 'POST', corpo: dados });
 export const tesourariaBradesco = () => pedir('/tesouraria/bradesco');
 export const bradescoColher = () => pedir('/tesouraria/bradesco/colher', { metodo: 'POST', corpo: {} });

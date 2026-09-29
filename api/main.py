@@ -1338,6 +1338,33 @@ def bradesco_gravar(dados: dict = Body(...), s: dict = Depends(sessao)):
     return {"ok": True, "config": bradesco.estado_config()}
 
 
+@app.post("/api/integracoes/bradesco/pfx")
+def bradesco_pfx(dados: dict = Body(...), s: dict = Depends(sessao)):
+    """Recebe o .pfx do e-CNPJ em base64 e a senha; a senha não é gravada."""
+    _so_ceo(s)
+    import base64 as _b64
+    try:
+        pfx = _b64.b64decode(dados.get("pfx_base64") or "", validate=False)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(422, "arquivo .pfx ilegível")
+    if not pfx:
+        raise HTTPException(422, "mande o arquivo .pfx")
+    try:
+        r = bradesco.importar_pfx(pfx, str(dados.get("senha") or ""))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    bradesco.garantir_registro(s["empresa_id"])
+    lim = bradesco.limitacao()
+    bd.executar(
+        "UPDATE integracao SET estado='nao_configurada', ultimo_erro=? "
+        "WHERE id='bradesco' AND empresa_id=?",
+        (lim or "certificado e chave gravados; ainda não testado", s["empresa_id"]))
+    bd.evento(s["empresa_id"], "integracao.credencial",
+              f"Bradesco: {s['usuario']['nome']} importou certificado e chave do .pfx.",
+              ator=f"usuario:{s['usuario']['id']}")
+    return {**r, "config": bradesco.estado_config()}
+
+
 @app.get("/api/tesouraria/bradesco")
 def tesouraria_bradesco(s: dict = Depends(sessao)):
     return bradesco.retrato(s["empresa_id"])
