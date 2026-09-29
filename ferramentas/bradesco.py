@@ -130,7 +130,10 @@ def _normalizar_contas(contas) -> list[dict]:
                  "tipo": partes[2] if len(partes) > 2 else "cc",
                  "apelido": partes[3] if len(partes) > 3 else ""}
         ag = "".join(ch for ch in str(c.get("agencia", "")) if ch.isdigit())
-        ct = "".join(ch for ch in str(c.get("conta", "")) if ch.isdigit())
+        # A API pede a conta sem o dígito (numeroConta 7 + digitoConta 1 na
+        # resposta). "65544-7" vira 0065544; sem hífen, o número vai como veio.
+        ct_bruta = str(c.get("conta", "")).split("-")[0]
+        ct = "".join(ch for ch in ct_bruta if ch.isdigit())
         if not ag or not ct:
             continue
         # a API pede agência com 4 dígitos sem DV e conta com 7 dígitos
