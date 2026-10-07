@@ -1320,8 +1320,8 @@ def bradesco_gravar(dados: dict = Body(...), s: dict = Depends(sessao)):
     _so_ceo(s)
     if dados.get("ambiente") and dados["ambiente"] not in bradesco.HOSTS:
         raise HTTPException(422, "ambiente precisa ser sandbox, homologacao ou producao")
-    if dados.get("fluxo") and dados["fluxo"] not in ("auto", "client_credentials", "jwt"):
-        raise HTTPException(422, "fluxo precisa ser auto, client_credentials ou jwt")
+    if dados.get("fluxo") and dados["fluxo"] not in ("auto", "mtls", "client_credentials", "jwt"):
+        raise HTTPException(422, "fluxo precisa ser auto, mtls, client_credentials ou jwt")
     bradesco.gravar_config(dados)
     bradesco.garantir_registro(s["empresa_id"])
     lim = bradesco.limitacao()

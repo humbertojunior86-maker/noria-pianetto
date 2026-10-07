@@ -53,8 +53,13 @@ HOSTS = {
     "producao": "https://openapi.bradesco.com.br",
 }
 CAMINHO_TOKEN = "/auth/server/v1.1/token"
-CAMINHO_SALDO = "/v1/contas/fornecimento/saldos"
-CAMINHO_EXTRATO = "/v1/contas/fornecimento/extratos"
+# Orientação do Bradesco (chamado INC1739629, 07/10/2026): token em
+# /auth/server-mtls/v1/token (client_credentials com TLS mútuo) e consulta nos
+# caminhos "fornecimento-*-contas", só com Authorization. Os caminhos antigos
+# /v1/contas/fornecimento/* respondem 401 Security failure para esta credencial.
+CAMINHO_TOKEN_MTLS = "/auth/server-mtls/v1/token"
+CAMINHO_SALDO = "/v1/fornecimento-saldos-contas/saldos"
+CAMINHO_EXTRATO = "/v1/fornecimento-extratos-contas/extratos"
 TEMPO_LIMITE_S = 25
 BANCO = "237"
 
@@ -297,7 +302,12 @@ def _jwt_assertion(cfg: dict, url_token: str) -> str:
 def _pedir_token(cfg: dict, fluxo: str) -> tuple[bool, str, str]:
     host = HOSTS.get(cfg.get("ambiente", "producao"), HOSTS["producao"])
     url = host + CAMINHO_TOKEN
-    if fluxo == "jwt":
+    if fluxo == "mtls":
+        url = host + CAMINHO_TOKEN_MTLS
+        dados = {"grant_type": "client_credentials", "client_id": cfg["client_id"],
+                 "client_secret": cfg["client_secret"]}
+        cab = {"Content-Type": "application/x-www-form-urlencoded"}
+    elif fluxo == "jwt":
         dados = {"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
                  "assertion": _jwt_assertion(cfg, url)}
         cab = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -353,9 +363,8 @@ def token() -> str:
     if t and t[1] > time.time() + 30:
         return t[0]
     fluxo = cfg.get("fluxo", "auto")
-    ordem = [fluxo] if fluxo in ("client_credentials", "jwt") else \
-        ([cfg["fluxo_confirmado"]] if cfg.get("fluxo_confirmado") in ("client_credentials", "jwt") else []) \
-        + [f for f in ("jwt", "client_credentials") if f != cfg.get("fluxo_confirmado")]
+    ordem = [fluxo] if fluxo in ("mtls", "client_credentials", "jwt") else \
+        ["mtls"] + [f for f in ("jwt", "client_credentials")]
     erros = []
     for fl in ordem:
         try:
@@ -395,8 +404,11 @@ def _get(caminho: str, params: dict) -> dict:
     host = HOSTS.get(cfg.get("ambiente", "producao"), HOSTS["producao"])
     tok = token()
     query = urllib.parse.urlencode(params)
-    status, texto = _http("GET", f"{host}{caminho}?{query}", None,
-                          _cabecalhos_assinados("GET", caminho, query, "", tok))
+    if (cfg.get("fluxo_confirmado") or "mtls") == "mtls":
+        cab = {"Authorization": f"Bearer {tok}", "Accept": "application/json"}
+    else:
+        cab = _cabecalhos_assinados("GET", caminho, query, "", tok)
+    status, texto = _http("GET", f"{host}{caminho}?{query}", None, cab)
     if status == 401:
         _token_cache.clear()
     if status != 200:
@@ -437,8 +449,13 @@ def saldo(agencia: str, conta: str) -> dict:
         v = _num(it.get("valorLancamento")) * _sinal(it.get("sinalSaldo"))
         nome = (it.get("nomeProduto") or "").strip()
         linhas.append({"produto": nome, "codigo": it.get("codigoProduto"), "valor": v})
-        if disponivel is None and ("DISPON" in nome.upper() or "SALDO" in nome.upper()):
-            disponivel = v
+    # "DISPONIVEL:" vem zerado quando a conta usa o cheque especial; o saldo
+    # real da conta é a linha "SALDO TOTAL" (negativa quando há limite em uso).
+    por_nome = {l["produto"].upper(): l["valor"] for l in linhas}
+    for alvo in ("SALDO TOTAL", "+ CTA CORRENTE", "DISPONIVEL:"):
+        if alvo in por_nome:
+            disponivel = por_nome[alvo]
+            break
     if disponivel is None and linhas:
         disponivel = linhas[0]["valor"]
     return {"agencia": agencia, "conta": conta, "disponivel": disponivel,
@@ -452,13 +469,22 @@ def extrato(agencia: str, conta: str, inicio: date, fim: date, tipo: str = "cc")
     j = _get(CAMINHO_EXTRATO, {"agencia": agencia, "conta": conta,
                                "dataInicio": inicio.strftime("%d%m%Y"),
                                "dataFim": fim.strftime("%d%m%Y"), "tipo": tipo})
-    brutos = ((j.get("extratoPorPeriodo") or {}).get("lstLancamentoMensal")) or []
-    if not brutos:
-        brutos = ((j.get("extratoUltimosLancamentos") or {}).get("listaLancamentos")) or []
+    # O banco divide a resposta: histórico (D-2 para trás) em extratoPorPeriodo e
+    # os últimos dias em extratoUltimosLancamentos, agrupados por rótulo.
+    # Lançamento futuro não é movimento realizado e fica de fora.
+    brutos = list(((j.get("extratoPorPeriodo") or {}).get("lstLancamentoMensal")) or [])
+    ult = ((j.get("extratoUltimosLancamentos") or {}).get("listaLancamentos")) or []
+    if isinstance(ult, dict):
+        for rot, lst in ult.items():
+            if "FUTUR" in rot.upper():
+                continue
+            brutos.extend(lst or [])
+    else:
+        brutos.extend(ult)
     movs = []
     for m in brutos:
         desc = (m.get("descritivoLancamentoCompleto") or m.get("descritivoLancamentoAbreviado") or "").strip()
-        if desc.upper().startswith("SALDO ANTERIOR"):
+        if desc.upper().startswith("SALDO"):
             continue
         d = str(m.get("dataLancamento") or "").strip()
         data_iso = _data_iso(d)

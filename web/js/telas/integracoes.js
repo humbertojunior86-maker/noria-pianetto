@@ -72,7 +72,7 @@ function blocoBradesco(i, contexto, recarregar) {
       amb.appendChild(o);
     });
     const fluxo = el('select');
-    [['auto', 'automático — JWT primeiro, depois credencial cliente/segredo'], ['client_credentials', 'credencial cliente/segredo (portal novo)'],
+    [['auto', 'automático — mTLS (orientação do banco) primeiro'], ['mtls', 'mTLS: server-mtls/v1/token (orientação do Bradesco, 07/10/2026)'], ['client_credentials', 'credencial cliente/segredo (portal novo)'],
       ['jwt', 'JWT assinado com a chave privada (o que o banco reconheceu)']].forEach(([v, t]) => {
       const o = el('option', { value: v, texto: t });
       if (v === c.fluxo) o.selected = true;
