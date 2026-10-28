@@ -37,7 +37,7 @@ Meta de negócio do ano 1: recuperar/evitar perda equivalente a **1,5% a 3% do f
 │  L5  AÇÃO            Casos, chamados Weeke, bloqueios, cobranças,     │
 │                      notificações, tarefas com prazo e alçada        │
 ├──────────────────────────────────────────────────────────────────────┤
-│  L4  NÓRIA          Orquestrador · Planner · Fila de hipóteses ·     │
+│  L4  CÓRTEX          Orquestrador · Planner · Fila de hipóteses ·     │
 │      (raciocínio)    Roteador de agentes · Árbitro de conflitos       │
 ├──────────────────────────────────────────────────────────────────────┤
 │  L3  AGENTES         14 agentes de área + 6 agentes transversais      │
@@ -122,7 +122,7 @@ Cada agente tem: escopo, ferramentas permitidas, dados que pode ler, ações que
 - **Pesquisador Externo** — preço de diesel, tabela ANTT, piso mínimo de frete, situação cadastral de CNPJ, protesto, reclamação trabalhista de concorrente, benchmark setorial.
 - **Advogado do Diabo** — obrigatório. Antes de qualquer caso chegar ao CEO, tenta derrubá-lo: busca a explicação inocente, o dado desatualizado, o falso positivo. Caso que sobrevive a ele é caso de verdade.
 
-### L4 — NÓRIA (o orquestrador)
+### L4 — Córtex (o orquestrador)
 
 O núcleo roda um loop contínuo de 7 passos:
 
@@ -161,7 +161,7 @@ Cada caso confirmado gera uma ação proporcional:
 
 - **Sala do CEO** (web, mobile-first): não é dashboard de números, é **fila de decisões**. Cada card traz: o que aconteceu, quanto custa, quem é o dono, o que o sistema recomenda, e três botões — Aprovar / Rejeitar / Pedir mais evidência.
 - **Briefing diário 07:00** por e-mail/WhatsApp: 5 achados de maior impacto, dinheiro em risco no dia, rotinas não cumpridas, o que o sistema fez sozinho nas últimas 24h.
-- **Pergunte ao Cérebro**: linguagem natural sobre toda a base ("por que a margem de Jataí caiu em agosto?") — a NÓRIA aciona os agentes necessários e responde com fontes.
+- **Pergunte ao Cérebro**: linguagem natural sobre toda a base ("por que a margem de Jataí caiu em agosto?") — o córtex aciona os agentes necessários e responde com fontes.
 
 ---
 

@@ -41,11 +41,6 @@ def outlook(ferramenta: str, entrada: dict) -> dict:
     if p.returncode != 0:
         raise RuntimeError(p.stderr[:500])
     r = json.loads(p.stdout)
-    if r.get("requires_auth"):
-        # O correio devolve isso com codigo de saida 0. Sem este teste, uma
-        # conexao vencida vira "enviado com sucesso" e ninguem recebe nada.
-        raise RuntimeError("OUTLOOK DESCONECTADO: o conector pediu nova "
-                           "autorizacao. Nenhum e-mail saiu.")
     if r.get("is_error"):
         raise RuntimeError(str(r.get("error"))[:500])
     return r.get("result") or {}
@@ -108,12 +103,7 @@ def classificar(e: dict) -> dict:
     trecho = (e.get("snippet") or e.get("summary") or "")[:600]
     baixo = (assunto + " " + trecho).lower()
 
-    if assunto.strip().upper().startswith(("NÓRIA", "NORIA")):
-        # Eco da propria NORIA: o que ela mandou volta pela caixa conectada.
-        # Sem este filtro, cada aviso enviado renascia como demanda de cliente.
-        classe, tema, area = "sistema", "eco de aviso da própria NÓRIA", \
-            "Tecnologia"
-    elif "não é possível entregar" in baixo or "undeliverable" in baixo:
+    if "não é possível entregar" in baixo or "undeliverable" in baixo:
         classe, tema, area = "sistema", "e-mail que não chegou ao destino", \
             "Tecnologia"
     elif any(r in de for r in ROBOS):
@@ -153,50 +143,7 @@ def entrada(paginas: int = 3) -> dict:
 CORES = {"alta": "#c2410c", "media": "#334155"}
 
 
-NO_CORPO = 30   # linhas por achado no corpo; a planilha leva todas
-
-ROTULOS = {"ctrc": "CTRC", "carta_frete": "Carta frete", "emissao": "Emissão",
-           "transportador": "Transportador", "enquadramento": "Enquadr.",
-           "margem_nao_descontada": "Valor", "vl_seguro": "Seguro",
-           "seguro_descontado": "Seguro", "valor": "Valor"}
-
-
-def _br(v) -> str:
-    if isinstance(v, float):
-        return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    return "" if v is None else str(v)
-
-
-def _tabela(linhas: list[dict], n: int) -> str:
-    if not linhas:
-        return ""
-    # CTRC e carta frete primeiro: é por eles que a equipe acha a carga no ATUA.
-    ordem = ["ctrc", "carta_frete", "emissao", "transportador", "enquadramento"]
-    cols = [c for c in ordem if c in linhas[0]]
-    valor = next((c for c in ("margem_nao_descontada", "seguro_descontado",
-                              "vl_seguro", "valor") if c in linhas[0]), None)
-    if not cols:
-        cols = list(linhas[0].keys())[:5]
-    if valor and valor not in cols:
-        cols.append(valor)
-    th = "".join(f'<th style="text-align:left;padding:4px 6px;font:600 11px Arial;'
-                 f'color:#64748b;border-bottom:1px solid #cbd5e1">'
-                 f'{ROTULOS.get(c, c)}</th>' for c in cols)
-    tr = "".join("<tr>" + "".join(
-        f'<td style="padding:3px 6px;font:400 12px Arial;color:#0f172a;'
-        f'border-bottom:1px solid #f1f5f9">{_br(ln.get(c))}</td>' for c in cols)
-        + "</tr>" for ln in linhas[:n])
-    resto = len(linhas) - n
-    rodape = (f'<div style="font:400 12px Arial;color:#64748b;margin-top:4px">'
-              f'Mostrando {n} de {len(linhas)}. A lista inteira está na planilha '
-              f'em anexo.</div>' if resto > 0 else
-              '<div style="font:400 12px Arial;color:#64748b;margin-top:4px">'
-              'Lista completa também na planilha em anexo.</div>')
-    return (f'<table style="border-collapse:collapse;margin-top:8px;width:100%">'
-            f'<tr>{th}</tr>{tr}</table>{rodape}')
-
-
-def _bloco(a: dict, n: int = NO_CORPO) -> str:
+def _bloco(a: dict) -> str:
     cor = CORES.get(a["gravidade"], "#334155")
     return (
         f'<tr><td style="padding:14px 0;border-bottom:1px solid #e2e8f0">'
@@ -206,37 +153,14 @@ def _bloco(a: dict, n: int = NO_CORPO) -> str:
         f'<div style="font:600 16px/1.4 Arial;color:#0f172a;margin-top:4px">'
         f'{a["titulo"]}</div>'
         f'<div style="font:400 14px/1.5 Arial;color:#475569;margin-top:4px">'
-        f'{(a["texto"] or "")[:400]}</div>'
-        f'{_tabela(a.get("linhas") or [], n)}</td></tr>')
+        f'{(a["texto"] or "")[:400]}</div></td></tr>')
 
 
-def planilhas(avs: list[dict]) -> list[str]:
-    import csv
-    pasta = os.path.join(os.path.dirname(os.path.abspath(__file__)), "anexos")
-    os.makedirs(pasta, exist_ok=True)
-    fora = []
-    for a in avs:
-        lns = a.get("linhas") or []
-        if not lns:
-            continue
-        caminho = os.path.join(pasta, f"achado-{a['id']}.csv")
-        cols = list(lns[0].keys())
-        with open(caminho, "w", newline="", encoding="utf-8-sig") as f:
-            w = csv.DictWriter(f, fieldnames=cols, delimiter=";")
-            w.writeheader()
-            for ln in lns:
-                w.writerow({c: (_br(ln.get(c)).replace(".", "")
-                                if isinstance(ln.get(c), float) else ln.get(c))
-                            for c in cols})
-        fora.append(caminho)
-    return fora
-
-
-def montar(avs: list[dict], n: int = NO_CORPO) -> tuple[str, str]:
+def montar(avs: list[dict]) -> tuple[str, str]:
     alta = [a for a in avs if a["gravidade"] == "alta"]
     assunto = (f"NÓRIA · {len(avs)} achado(s)"
                + (f" · {len(alta)} para hoje" if alta else ""))
-    linhas = "".join(_bloco(a, n) for a in avs)
+    linhas = "".join(_bloco(a) for a in avs)
     html = (
         '<div style="max-width:640px;margin:0 auto;padding:24px;'
         'font-family:Arial,Helvetica,sans-serif">'
@@ -258,24 +182,10 @@ def saida(limite: int = 12) -> dict:
                  token=tok)).get("avisos") or []
     if not avs:
         return {"enviados": 0}
-    # O pedido vira argumento de linha de comando: encolhe o corpo até caber.
-    n = NO_CORPO
-    while True:
-        assunto, html = montar(avs, n)
-        if len(html) <= 90000 or n <= 3:
-            break
-        n = max(3, n // 2)
-    pedido = {"action": "send", "to": [DESTINO], "cc": [], "bcc": [],
-              "subject": assunto, "html_body": html,
-              "body": "\n".join(a["titulo"] for a in avs)}
-    anexos = planilhas(avs)
-    try:
-        outlook("send_email", dict(pedido, attachment_files=anexos)
-                if anexos else pedido)
-    except RuntimeError as e:
-        if "DESCONECTADO" in str(e) or not anexos:
-            raise
-        outlook("send_email", pedido)   # sem anexo, mas o CTRC vai no corpo
+    assunto, html = montar(avs)
+    outlook("send_email", {"action": "send", "to": [DESTINO],
+                           "subject": assunto, "html_body": html,
+                           "body": "\n".join(a["titulo"] for a in avs)})
     for a in avs:
         _http(f"/api/avisos/{a['id']}/entregue",
               {"canal": "outlook", "referencia": DESTINO}, tok)

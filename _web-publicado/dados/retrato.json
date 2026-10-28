@@ -1,0 +1,1155 @@
+{
+  "meta": {
+    "data_extracao": "2026-09-05",
+    "data_referencia_banco": "2026-09-05",
+    "fonte": "ERP ATUA - PostgreSQL schema public (usuario somente leitura jhn_ro)"
+  },
+  "empresa": {
+    "razao_social": "PIANETTO TRANSPORTES E LOGISTICA LTDA",
+    "nome_fantasia": null,
+    "cnpj": "43976512000109",
+    "cd_pessoa_matriz": 2,
+    "filiais_ativas": 14,
+    "filiais_total_cadastradas": 14,
+    "filiais_grupo_pianetto": 11,
+    "matrizes_no_banco": 2,
+    "periodo_dados": {
+      "inicio": "2024-08-26",
+      "fim": "2026-09-05"
+    },
+    "ctes_validos_total": 55132,
+    "receita_total_periodo": 334631758.15
+  },
+  "filiais": [
+    {
+      "nome": "PIANETTO TRANSPORTES E LOGISTICA LTDA",
+      "razao_social": "PIANETTO TRANSPORTES E LOGISTICA LTDA",
+      "cd_pessoa_filial": 2,
+      "cnpj": "43976512000109",
+      "cd_pessoa_matriz": 2,
+      "ativa": true,
+      "ctes_12m": 24452,
+      "receita_12m": 141924997.7,
+      "custo_carta_frete_12m": 120303256.12,
+      "resultado_12m": 16907287.61,
+      "ticket_medio": 5804.23,
+      "participacao_receita_pct": 64.71
+    },
+    {
+      "nome": "PIANETTO TRANSPORTES -- SP",
+      "razao_social": "PIANETTO TRANSPORTES -- SP",
+      "cd_pessoa_filial": 1792,
+      "cnpj": "43976512000443",
+      "cd_pessoa_matriz": 2,
+      "ativa": true,
+      "ctes_12m": 5787,
+      "receita_12m": 33492346.4,
+      "custo_carta_frete_12m": 26979377.08,
+      "resultado_12m": 4575255.92,
+      "ticket_medio": 5787.51,
+      "participacao_receita_pct": 15.27
+    },
+    {
+      "nome": "PIANETTO TRANSPORTES -- MG",
+      "razao_social": "PIANETTO TRANSPORTES -- MG",
+      "cd_pessoa_filial": 1715,
+      "cnpj": "43976512000362",
+      "cd_pessoa_matriz": 2,
+      "ativa": true,
+      "ctes_12m": 2727,
+      "receita_12m": 14511144.1,
+      "custo_carta_frete_12m": 11198279.38,
+      "resultado_12m": 2268506.48,
+      "ticket_medio": 5321.28,
+      "participacao_receita_pct": 6.62
+    },
+    {
+      "nome": "PIANETTO TRANSPORTES -- PR",
+      "razao_social": "PIANETTO TRANSPORTES -- PR",
+      "cd_pessoa_filial": 1538,
+      "cnpj": "43976512000281",
+      "cd_pessoa_matriz": 2,
+      "ativa": true,
+      "ctes_12m": 1708,
+      "receita_12m": 11869225.39,
+      "custo_carta_frete_12m": 8852826.65,
+      "resultado_12m": 1667864.87,
+      "ticket_medio": 6949.2,
+      "participacao_receita_pct": 5.41
+    },
+    {
+      "nome": "PIANETTO TRANSPORTES -- MS",
+      "razao_social": "PIANETTO TRANSPORTES -- MS",
+      "cd_pessoa_filial": 6691,
+      "cnpj": "43976512000605",
+      "cd_pessoa_matriz": 2,
+      "ativa": true,
+      "ctes_12m": 1839,
+      "receita_12m": 11334280.57,
+      "custo_carta_frete_12m": 10755320.54,
+      "resultado_12m": -205905.57,
+      "ticket_medio": 6163.28,
+      "participacao_receita_pct": 5.17
+    },
+    {
+      "nome": "PIANETTO TRANSPORTES -- MT",
+      "razao_social": "PIANETTO TRANSPORTES -- MT",
+      "cd_pessoa_filial": 4353,
+      "cnpj": "43976512000524",
+      "cd_pessoa_matriz": 2,
+      "ativa": true,
+      "ctes_12m": 297,
+      "receita_12m": 2442521.3,
+      "custo_carta_frete_12m": 1906886.25,
+      "resultado_12m": 235911.87,
+      "ticket_medio": 8223.98,
+      "participacao_receita_pct": 1.11
+    },
+    {
+      "nome": "PIANETTO TRANSPORTES -- TO",
+      "razao_social": "PIANETTO TRANSPORTES -- TO",
+      "cd_pessoa_filial": 14171,
+      "cnpj": "43976512000877",
+      "cd_pessoa_matriz": 2,
+      "ativa": true,
+      "ctes_12m": 308,
+      "receita_12m": 2262845.55,
+      "custo_carta_frete_12m": 1663371.36,
+      "resultado_12m": 298785.23,
+      "ticket_medio": 7346.9,
+      "participacao_receita_pct": 1.03
+    },
+    {
+      "nome": "PIANETTO TRANSPORTES -- SC",
+      "razao_social": "PIANETTO TRANSPORTES -- SC",
+      "cd_pessoa_filial": 14376,
+      "cnpj": "43976512000958",
+      "cd_pessoa_matriz": 2,
+      "ativa": true,
+      "ctes_12m": 207,
+      "receita_12m": 1492899.35,
+      "custo_carta_frete_12m": 1153662.29,
+      "resultado_12m": 108218.56,
+      "ticket_medio": 7212.07,
+      "participacao_receita_pct": 0.68
+    },
+    {
+      "nome": "CALCARE INSUMOS AGRICOLAS - MS",
+      "razao_social": "CALCARE INSUMOS AGRICOLAS - MS",
+      "cd_pessoa_filial": 9124,
+      "cnpj": "59260217000183",
+      "cd_pessoa_matriz": 9124,
+      "ativa": true,
+      "ctes_12m": 0,
+      "receita_12m": 0.0,
+      "custo_carta_frete_12m": 0.0,
+      "resultado_12m": 0.0,
+      "ticket_medio": 0.0,
+      "participacao_receita_pct": 0.0
+    },
+    {
+      "nome": "PIANETTO TRANSPORTES -- PI",
+      "razao_social": "PIANETTO TRANSPORTES -- PI",
+      "cd_pessoa_filial": 8800,
+      "cnpj": "43976512000796",
+      "cd_pessoa_matriz": 2,
+      "ativa": true,
+      "ctes_12m": 0,
+      "receita_12m": 0.0,
+      "custo_carta_frete_12m": 0.0,
+      "resultado_12m": 0.0,
+      "ticket_medio": 0.0,
+      "participacao_receita_pct": 0.0
+    },
+    {
+      "nome": "PIANETTO TRANSPORTES -- CRISTALINA",
+      "razao_social": "PIANETTO TRANSPORTES -- CRISTALINA",
+      "cd_pessoa_filial": 38753,
+      "cnpj": "43976512001091",
+      "cd_pessoa_matriz": 2,
+      "ativa": true,
+      "ctes_12m": 0,
+      "receita_12m": 0.0,
+      "custo_carta_frete_12m": 0.0,
+      "resultado_12m": 0.0,
+      "ticket_medio": 0.0,
+      "participacao_receita_pct": 0.0
+    },
+    {
+      "nome": "PIANETTO TRANSPORTES -- ANAPOLIS",
+      "razao_social": "PIANETTO TRANSPORTES -- ANAPOLIS",
+      "cd_pessoa_filial": 38754,
+      "cnpj": "43976512001172",
+      "cd_pessoa_matriz": 2,
+      "ativa": true,
+      "ctes_12m": 0,
+      "receita_12m": 0.0,
+      "custo_carta_frete_12m": 0.0,
+      "resultado_12m": 0.0,
+      "ticket_medio": 0.0,
+      "participacao_receita_pct": 0.0
+    },
+    {
+      "nome": "CALCARE INSUMOS AGRICOLAS - MG",
+      "razao_social": "CALCARE INSUMOS AGRICOLAS - MG",
+      "cd_pessoa_filial": 40203,
+      "cnpj": "59260217000345",
+      "cd_pessoa_matriz": 9124,
+      "ativa": true,
+      "ctes_12m": 0,
+      "receita_12m": 0.0,
+      "custo_carta_frete_12m": 0.0,
+      "resultado_12m": 0.0,
+      "ticket_medio": 0.0,
+      "participacao_receita_pct": 0.0
+    },
+    {
+      "nome": "CALCARE INSUMOS AGRICOLAS - GO",
+      "razao_social": "CALCARE INSUMOS AGRICOLAS - GO",
+      "cd_pessoa_filial": 8081,
+      "cnpj": "59260217000264",
+      "cd_pessoa_matriz": 9124,
+      "ativa": true,
+      "ctes_12m": 0,
+      "receita_12m": 0.0,
+      "custo_carta_frete_12m": 0.0,
+      "resultado_12m": 0.0,
+      "ticket_medio": 0.0,
+      "participacao_receita_pct": 0.0
+    }
+  ],
+  "receita_12m_total": 219330260.36,
+  "faturamento_mensal": [
+    {
+      "mes": "2024-10",
+      "ctes": 689,
+      "receita": 3029359.07,
+      "frete": 2946624.54,
+      "custo": 2493833.56,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 442855.97,
+      "peso_kg": 26440252.31,
+      "margem_pct": 14.62
+    },
+    {
+      "mes": "2024-11",
+      "ctes": 706,
+      "receita": 3442796.84,
+      "frete": 3195534.36,
+      "custo": 2837199.15,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 476227.78,
+      "peso_kg": 30551331.08,
+      "margem_pct": 13.83
+    },
+    {
+      "mes": "2024-12",
+      "ctes": 572,
+      "receita": 2555088.49,
+      "frete": 2409771.21,
+      "custo": 2156693.59,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 278132.26,
+      "peso_kg": 24885880.63,
+      "margem_pct": 10.89
+    },
+    {
+      "mes": "2025-01",
+      "ctes": 477,
+      "receita": 3503576.34,
+      "frete": 3151362.18,
+      "custo": 2796699.02,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 501646.8,
+      "peso_kg": 19738821.0,
+      "margem_pct": 14.32
+    },
+    {
+      "mes": "2025-02",
+      "ctes": 1420,
+      "receita": 11233929.71,
+      "frete": 10733621.18,
+      "custo": 10068057.52,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 1356319.98,
+      "peso_kg": 58954539.9,
+      "margem_pct": 12.07
+    },
+    {
+      "mes": "2025-03",
+      "ctes": 1835,
+      "receita": 14195297.5,
+      "frete": 13640818.89,
+      "custo": 12254028.2,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 1868332.24,
+      "peso_kg": 74949416.0,
+      "margem_pct": 13.16
+    },
+    {
+      "mes": "2025-04",
+      "ctes": 1458,
+      "receita": 9247984.58,
+      "frete": 8776854.38,
+      "custo": 8069079.09,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 1181591.73,
+      "peso_kg": 59121642.37,
+      "margem_pct": 12.78
+    },
+    {
+      "mes": "2025-05",
+      "ctes": 1902,
+      "receita": 11558679.0,
+      "frete": 10919086.0,
+      "custo": 9984953.33,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 1428388.86,
+      "peso_kg": 74964860.88,
+      "margem_pct": 12.36
+    },
+    {
+      "mes": "2025-06",
+      "ctes": 1786,
+      "receita": 11256102.33,
+      "frete": 10707732.11,
+      "custo": 9892900.16,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 1268847.65,
+      "peso_kg": 70546476.03,
+      "margem_pct": 11.27
+    },
+    {
+      "mes": "2025-07",
+      "ctes": 2880,
+      "receita": 17073978.26,
+      "frete": 16342106.36,
+      "custo": 14913176.81,
+      "custo_campo_vl_custo": 31345.59,
+      "resultado": 1633249.17,
+      "peso_kg": 115217580.01,
+      "margem_pct": 9.57
+    },
+    {
+      "mes": "2025-08",
+      "ctes": 3028,
+      "receita": 22213633.75,
+      "frete": 21108922.02,
+      "custo": 17523926.24,
+      "custo_campo_vl_custo": 130948.0,
+      "resultado": 3660634.7,
+      "peso_kg": 120473128.09,
+      "margem_pct": 16.48
+    },
+    {
+      "mes": "2025-09",
+      "ctes": 2755,
+      "receita": 15465548.02,
+      "frete": 14684395.88,
+      "custo": 13142206.45,
+      "custo_campo_vl_custo": 7246.31,
+      "resultado": 1724240.73,
+      "peso_kg": 101119262.51,
+      "margem_pct": 11.15
+    },
+    {
+      "mes": "2025-10",
+      "ctes": 2472,
+      "receita": 15026648.8,
+      "frete": 13875212.04,
+      "custo": 12360467.23,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 1695591.41,
+      "peso_kg": 90420616.58,
+      "margem_pct": 11.28
+    },
+    {
+      "mes": "2025-11",
+      "ctes": 1624,
+      "receita": 7744980.82,
+      "frete": 7228575.13,
+      "custo": 6174497.56,
+      "custo_campo_vl_custo": 4483.5,
+      "resultado": 1047025.14,
+      "peso_kg": 60132024.72,
+      "margem_pct": 13.52
+    },
+    {
+      "mes": "2025-12",
+      "ctes": 1803,
+      "receita": 9577170.97,
+      "frete": 8826063.85,
+      "custo": 7823287.6,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 1006916.56,
+      "peso_kg": 67939299.21,
+      "margem_pct": 10.51
+    },
+    {
+      "mes": "2026-01",
+      "ctes": 1779,
+      "receita": 11395375.9,
+      "frete": 10339999.55,
+      "custo": 9168841.63,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 1416103.8,
+      "peso_kg": 71097529.99,
+      "margem_pct": 12.43
+    },
+    {
+      "mes": "2026-02",
+      "ctes": 3040,
+      "receita": 17733899.66,
+      "frete": 16425962.12,
+      "custo": 14431873.1,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 2586378.42,
+      "peso_kg": 114458191.29,
+      "margem_pct": 14.58
+    },
+    {
+      "mes": "2026-03",
+      "ctes": 3459,
+      "receita": 20755280.67,
+      "frete": 19668034.2,
+      "custo": 17400344.7,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 2599609.99,
+      "peso_kg": 134136112.04,
+      "margem_pct": 12.53
+    },
+    {
+      "mes": "2026-04",
+      "ctes": 3742,
+      "receita": 22057284.57,
+      "frete": 20944686.26,
+      "custo": 18537479.43,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 2637321.03,
+      "peso_kg": 142755435.42,
+      "margem_pct": 11.96
+    },
+    {
+      "mes": "2026-05",
+      "ctes": 4160,
+      "receita": 26785135.32,
+      "frete": 25120329.4,
+      "custo": 22003255.71,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 3285436.66,
+      "peso_kg": 167553075.85,
+      "margem_pct": 12.27
+    },
+    {
+      "mes": "2026-06",
+      "ctes": 4169,
+      "receita": 25153722.8,
+      "frete": 24158726.62,
+      "custo": 21604490.86,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 2802472.07,
+      "peso_kg": 165073056.73,
+      "margem_pct": 11.14
+    },
+    {
+      "mes": "2026-07",
+      "ctes": 4148,
+      "receita": 24104276.97,
+      "frete": 22663891.83,
+      "custo": 20364702.19,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 2513861.23,
+      "peso_kg": 160167298.78,
+      "margem_pct": 10.43
+    },
+    {
+      "mes": "2026-08",
+      "ctes": 3889,
+      "receita": 22120252.44,
+      "frete": 20940663.87,
+      "custo": 18613233.97,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 2397806.82,
+      "peso_kg": 151994294.72,
+      "margem_pct": 10.84
+    },
+    {
+      "mes": "2026-09",
+      "ctes": 725,
+      "receita": 3741809.73,
+      "frete": 3556458.34,
+      "custo": 3193524.66,
+      "custo_campo_vl_custo": 0.0,
+      "resultado": 391081.15,
+      "peso_kg": 26697026.25,
+      "margem_pct": 10.45
+    }
+  ],
+  "observacao_custo": "O campo ctrc.vl_custo esta praticamente sem uso (apenas 5 CT-es dos ultimos 12 meses possuem valor, total R$ 4.838,86). O custo efetivo de tracao esta em carta_frete.vl_frete, usado como \"custo\" na serie mensal e nas filiais. O campo ctrc.vl_resultado, por outro lado, esta populado e foi mantido como resultado oficial do ERP.",
+  "clientes_top": [
+    {
+      "cd_pessoa": 4644,
+      "nome": "MOTZ TRANSPORTES LTDA GO",
+      "razao_social": "MOTZ TRANSPORTES LTDA GO",
+      "cnpj_cpf": "35825580000645",
+      "ctes_12m": 7198,
+      "receita_12m": 47816559.8,
+      "resultado_12m": 7177950.76,
+      "ticket_medio": 6643.03,
+      "participacao_receita_pct": 21.8
+    },
+    {
+      "cd_pessoa": 13577,
+      "nome": "MOTZ TRANSPORTES LTDA.SP",
+      "razao_social": "MOTZ TRANSPORTES LTDA.SP",
+      "cnpj_cpf": "35825580000130",
+      "ctes_12m": 4186,
+      "receita_12m": 21374007.6,
+      "resultado_12m": 3069106.18,
+      "ticket_medio": 5106.07,
+      "participacao_receita_pct": 9.75
+    },
+    {
+      "cd_pessoa": 38505,
+      "nome": "ADAPTA",
+      "razao_social": "ADAPTA LOG",
+      "cnpj_cpf": "40181584000163",
+      "ctes_12m": 2258,
+      "receita_12m": 17019604.12,
+      "resultado_12m": 1869455.94,
+      "ticket_medio": 7537.47,
+      "participacao_receita_pct": 7.76
+    },
+    {
+      "cd_pessoa": 14487,
+      "nome": "MOTZ TRANSPORTES MG",
+      "razao_social": "MOTZ TRANSPORTES MG",
+      "cnpj_cpf": "35825580001455",
+      "ctes_12m": 1223,
+      "receita_12m": 7546341.99,
+      "resultado_12m": 830714.62,
+      "ticket_medio": 6170.35,
+      "participacao_receita_pct": 3.44
+    },
+    {
+      "cd_pessoa": 9124,
+      "nome": "CALCARE INSUMOS AGRICOLAS - MS",
+      "razao_social": "CALCARE INSUMOS AGRICOLAS - MS",
+      "cnpj_cpf": "59260217000183",
+      "ctes_12m": 1679,
+      "receita_12m": 6297488.2,
+      "resultado_12m": 313906.49,
+      "ticket_medio": 3750.74,
+      "participacao_receita_pct": 2.87
+    },
+    {
+      "cd_pessoa": 391,
+      "nome": "PRODUTOS ALIMENTICIOS ORLANDIA S A COMERCIO E INDUSTRIA",
+      "razao_social": "PRODUTOS ALIMENTICIOS ORLANDIA S A COMERCIO E INDUSTRIA",
+      "cnpj_cpf": "53309845001100",
+      "ctes_12m": 809,
+      "receita_12m": 3950792.15,
+      "resultado_12m": 98075.18,
+      "ticket_medio": 4883.55,
+      "participacao_receita_pct": 1.8
+    },
+    {
+      "cd_pessoa": 25405,
+      "nome": "MOTZ TRANSPORTES LTDA PR",
+      "razao_social": "MOTZ TRANSPORTES LTDA PR",
+      "cnpj_cpf": "35825580000726",
+      "ctes_12m": 334,
+      "receita_12m": 3719423.67,
+      "resultado_12m": 223610.18,
+      "ticket_medio": 11136.0,
+      "participacao_receita_pct": 1.7
+    },
+    {
+      "cd_pessoa": 13384,
+      "nome": "JALLES MATRIZ",
+      "razao_social": "JALLES MACHADO S A",
+      "cnpj_cpf": "02635522000195",
+      "ctes_12m": 328,
+      "receita_12m": 3687340.2,
+      "resultado_12m": 507895.94,
+      "ticket_medio": 11241.89,
+      "participacao_receita_pct": 1.68
+    },
+    {
+      "cd_pessoa": 392,
+      "nome": "PRODUTOS ALIMENTICIOS ORLANDIA S/A COM IND",
+      "razao_social": "PRODUTOS ALIMENTICIOS ORLANDIA S/A COM IND",
+      "cnpj_cpf": "53309845000120",
+      "ctes_12m": 326,
+      "receita_12m": 2431134.67,
+      "resultado_12m": 209258.89,
+      "ticket_medio": 7457.47,
+      "participacao_receita_pct": 1.11
+    },
+    {
+      "cd_pessoa": 11582,
+      "nome": "MOTZ TRANSPORTES LTDA DF",
+      "razao_social": "MOTZ TRANSPORTES LTDA DF",
+      "cnpj_cpf": "35825580001960",
+      "ctes_12m": 228,
+      "receita_12m": 2336813.14,
+      "resultado_12m": 93671.0,
+      "ticket_medio": 10249.18,
+      "participacao_receita_pct": 1.07
+    },
+    {
+      "cd_pessoa": 15081,
+      "nome": "SLC AGRICOLA LTDA",
+      "razao_social": "SLC AGRICOLA LTDA",
+      "cnpj_cpf": "89096457000589",
+      "ctes_12m": 184,
+      "receita_12m": 2128923.87,
+      "resultado_12m": 148941.73,
+      "ticket_medio": 11570.24,
+      "participacao_receita_pct": 0.97
+    },
+    {
+      "cd_pessoa": 419,
+      "nome": "LOUIS DREYFUS COMPANY BRASIL S. A.",
+      "razao_social": "LOUIS DREYFUS COMPANY BRASIL S. A.",
+      "cnpj_cpf": "47067525007625",
+      "ctes_12m": 534,
+      "receita_12m": 2115826.76,
+      "resultado_12m": 247848.4,
+      "ticket_medio": 3962.22,
+      "participacao_receita_pct": 0.96
+    },
+    {
+      "cd_pessoa": 8081,
+      "nome": "CALCARE INSUMOS AGRICOLAS - GO",
+      "razao_social": "CALCARE INSUMOS AGRICOLAS - GO",
+      "cnpj_cpf": "59260217000264",
+      "ctes_12m": 669,
+      "receita_12m": 2099751.74,
+      "resultado_12m": 21828.13,
+      "ticket_medio": 3138.64,
+      "participacao_receita_pct": 0.96
+    },
+    {
+      "cd_pessoa": 3865,
+      "nome": "PRODUTOS ALIMENTICIOS ORLANDIA S/A COM. IND.",
+      "razao_social": "PRODUTOS ALIMENTICIOS ORLANDIA S/A COM. IND.",
+      "cnpj_cpf": "53309845000200",
+      "ctes_12m": 175,
+      "receita_12m": 1977517.75,
+      "resultado_12m": 212793.2,
+      "ticket_medio": 11300.1,
+      "participacao_receita_pct": 0.9
+    },
+    {
+      "cd_pessoa": 6171,
+      "nome": "NOVAAGRI INFRA ESTRUTURA DE ARMAZEN ESCOAM AGRICOLA SA",
+      "razao_social": "NOVAAGRI INFRA ESTRUTURA DE ARMAZEN ESCOAM AGRICOLA SA",
+      "cnpj_cpf": "09077252002307",
+      "ctes_12m": 466,
+      "receita_12m": 1932188.73,
+      "resultado_12m": 245049.17,
+      "ticket_medio": 4146.33,
+      "participacao_receita_pct": 0.88
+    }
+  ],
+  "concentracao_clientes": {
+    "clientes_ativos_12m": 675,
+    "receita_12m": 219330260.36,
+    "top5_pct": 45.62,
+    "top10_pct": 52.97,
+    "top20_pct": 61.72,
+    "top5_valor": 100054001.71
+  },
+  "carteira": {
+    "a_receber": {
+      "rotulo": "Titulos a receber (credito)",
+      "id_tipo": 1,
+      "total_aberto": 20887510.1,
+      "quantidade": 4636,
+      "vencido": 12216706.47,
+      "quantidade_vencida": 4182,
+      "vencido_pct": 58.49,
+      "faixas": {
+        "atraso_1_30": {
+          "quantidade": 1809,
+          "saldo": 9461532.32,
+          "valor_bruto": 10194873.63
+        },
+        "atraso_mais_90": {
+          "quantidade": 2086,
+          "saldo": 2298610.53,
+          "valor_bruto": 8688712.69
+        },
+        "atraso_31_60": {
+          "quantidade": 208,
+          "saldo": 224908.44,
+          "valor_bruto": 1286057.65
+        },
+        "a_vencer": {
+          "quantidade": 454,
+          "saldo": 8670803.63,
+          "valor_bruto": 8679378.63
+        },
+        "atraso_61_90": {
+          "quantidade": 79,
+          "saldo": 231655.18,
+          "valor_bruto": 397607.41
+        }
+      }
+    },
+    "a_pagar": {
+      "rotulo": "Titulos a pagar (debito)",
+      "id_tipo": 2,
+      "total_aberto": 47828949.63,
+      "quantidade": 5686,
+      "vencido": 1804199.83,
+      "quantidade_vencida": 1175,
+      "vencido_pct": 3.77,
+      "faixas": {
+        "atraso_1_30": {
+          "quantidade": 300,
+          "saldo": 462330.19,
+          "valor_bruto": 462330.19
+        },
+        "atraso_mais_90": {
+          "quantidade": 665,
+          "saldo": 1049336.84,
+          "valor_bruto": 1049336.84
+        },
+        "atraso_31_60": {
+          "quantidade": 118,
+          "saldo": 227620.82,
+          "valor_bruto": 227620.82
+        },
+        "a_vencer": {
+          "quantidade": 4511,
+          "saldo": 46024749.8,
+          "valor_bruto": 46024749.8
+        },
+        "atraso_61_90": {
+          "quantidade": 92,
+          "saldo": 64911.98,
+          "valor_bruto": 64911.98
+        }
+      }
+    },
+    "observacao": "id_tipo=1 identificado como A RECEBER (100% dos titulos deste tipo possuem registro em titulo_credito_vencimento; 99,4% dos pagadores de CT-e); id_tipo=2 como A PAGAR (100% com registro em titulo_debito). Saldo = vl_titulo - vl_pago, apenas titulos sem dt_quitacao e com saldo > 0."
+  },
+  "contas_bancarias": [
+    {
+      "cd_conta": 1,
+      "banco": "BRASIL SA",
+      "numero_banco": 1,
+      "agencia": "3066",
+      "conta": "34050-2",
+      "titular": "PIANETTO TRANSPORTES E LOGISTICA LTDA",
+      "movimentos": 28444,
+      "periodo": {
+        "inicio": "2024-08-01",
+        "fim": "2026-09-04"
+      },
+      "movimentos_90d": 4491,
+      "entradas_90d": 35006676.42,
+      "saidas_90d": -34098179.7,
+      "saldo_liquido_90d": 908496.72,
+      "conciliados": 28041,
+      "conciliados_pct": 98.58,
+      "nao_conciliados": 403
+    },
+    {
+      "cd_conta": 3,
+      "banco": "ITAU SA",
+      "numero_banco": 341,
+      "agencia": "0322",
+      "conta": "98681-1",
+      "titular": "PIANETTO TRANSPORTES E LOGISTICA LTDA",
+      "movimentos": 7303,
+      "periodo": {
+        "inicio": "2024-08-01",
+        "fim": "2026-09-04"
+      },
+      "movimentos_90d": 3453,
+      "entradas_90d": 38091681.39,
+      "saidas_90d": -38001781.71,
+      "saldo_liquido_90d": 89899.68,
+      "conciliados": 7061,
+      "conciliados_pct": 96.69,
+      "nao_conciliados": 242
+    },
+    {
+      "cd_conta": 1112,
+      "banco": "BANCO BTG PACTUAL",
+      "numero_banco": 208,
+      "agencia": "50",
+      "conta": "817643-4",
+      "titular": "PIANETTO TRANSPORTES E LOGISTICA LTDA",
+      "movimentos": 4106,
+      "periodo": {
+        "inicio": "2024-12-10",
+        "fim": "2026-09-01"
+      },
+      "movimentos_90d": 468,
+      "entradas_90d": 7264936.15,
+      "saidas_90d": -7143041.72,
+      "saldo_liquido_90d": 121894.43,
+      "conciliados": 4077,
+      "conciliados_pct": 99.29,
+      "nao_conciliados": 29
+    },
+    {
+      "cd_conta": 5787,
+      "banco": "BRASIL SA",
+      "numero_banco": 1,
+      "agencia": "3066",
+      "conta": "40972-3",
+      "titular": "CALCARE INSUMOS AGRICOLAS - MS",
+      "movimentos": 1774,
+      "periodo": {
+        "inicio": "2025-07-28",
+        "fim": "2026-09-03"
+      },
+      "movimentos_90d": 486,
+      "entradas_90d": 5345286.77,
+      "saidas_90d": -5529675.05,
+      "saldo_liquido_90d": -184388.28,
+      "conciliados": 1769,
+      "conciliados_pct": 99.72,
+      "nao_conciliados": 5
+    },
+    {
+      "cd_conta": 2,
+      "banco": "BRADESCO SA",
+      "numero_banco": 237,
+      "agencia": "2457",
+      "conta": "30408-5",
+      "titular": "PIANETTO TRANSPORTES E LOGISTICA LTDA",
+      "movimentos": 1428,
+      "periodo": {
+        "inicio": "2024-08-02",
+        "fim": "2026-09-03"
+      },
+      "movimentos_90d": 360,
+      "entradas_90d": 5802397.57,
+      "saidas_90d": -5822937.63,
+      "saldo_liquido_90d": -20540.06,
+      "conciliados": 1367,
+      "conciliados_pct": 95.73,
+      "nao_conciliados": 61
+    },
+    {
+      "cd_conta": 8002,
+      "banco": "BANCO SAFRA",
+      "numero_banco": 422,
+      "agencia": "0043",
+      "conta": "586522-6",
+      "titular": "PIANETTO TRANSPORTES E LOGISTICA LTDA",
+      "movimentos": 692,
+      "periodo": {
+        "inicio": "2025-11-19",
+        "fim": "2026-09-02"
+      },
+      "movimentos_90d": 209,
+      "entradas_90d": 1428947.41,
+      "saidas_90d": -1361967.43,
+      "saldo_liquido_90d": 66979.98,
+      "conciliados": 684,
+      "conciliados_pct": 98.84,
+      "nao_conciliados": 8
+    },
+    {
+      "cd_conta": 8189,
+      "banco": "GOFLUX - FITBANK INST DE PGTO ELETRONICOS",
+      "numero_banco": 450,
+      "agencia": "0001",
+      "conta": "9551697546-8",
+      "titular": "PIANETTO TRANSPORTES E LOGISTICA LTDA",
+      "movimentos": 304,
+      "periodo": {
+        "inicio": "2026-04-08",
+        "fim": "2026-08-18"
+      },
+      "movimentos_90d": 267,
+      "entradas_90d": 3123680.08,
+      "saidas_90d": -3297421.13,
+      "saldo_liquido_90d": -173741.05,
+      "conciliados": 2,
+      "conciliados_pct": 0.66,
+      "nao_conciliados": 302
+    },
+    {
+      "cd_conta": 16061,
+      "banco": "GOFLUX - FITBANK INST DE PGTO ELETRONICOS",
+      "numero_banco": 450,
+      "agencia": "0001",
+      "conta": "11655922833-2",
+      "titular": "PIANETTO TRANSPORTES E LOGISTICA LTDA",
+      "movimentos": 168,
+      "periodo": {
+        "inicio": "2026-07-21",
+        "fim": "2026-07-31"
+      },
+      "movimentos_90d": 168,
+      "entradas_90d": 202224.49,
+      "saidas_90d": -198670.67,
+      "saldo_liquido_90d": 3553.82,
+      "conciliados": 14,
+      "conciliados_pct": 8.33,
+      "nao_conciliados": 154
+    },
+    {
+      "cd_conta": 7872,
+      "banco": "GOFLUX - FITBANK INST DE PGTO ELETRONICOS",
+      "numero_banco": 450,
+      "agencia": "0001",
+      "conta": "9551681516-0",
+      "titular": "PIANETTO TRANSPORTES E LOGISTICA LTDA",
+      "movimentos": 157,
+      "periodo": {
+        "inicio": "2026-01-06",
+        "fim": "2026-08-14"
+      },
+      "movimentos_90d": 44,
+      "entradas_90d": 3684824.24,
+      "saidas_90d": -3684510.71,
+      "saldo_liquido_90d": 313.53,
+      "conciliados": 127,
+      "conciliados_pct": 80.89,
+      "nao_conciliados": 30
+    }
+  ],
+  "frota": {
+    "veiculos_total": 63202,
+    "veiculos_ativos": 33331,
+    "veiculos_usados_12m": 11806,
+    "motoristas_total": 23805,
+    "motoristas_ativos": 12742,
+    "motoristas_usados_12m": 11919,
+    "funcionarios_total": 282,
+    "funcionarios_ativos": 129,
+    "manifestos_12m": 14885,
+    "manifestos_total": 26385,
+    "cartas_frete_12m": 35474,
+    "cartas_frete_total": 52585,
+    "valor_cartas_frete_12m": 187558567.79,
+    "viagens_total": 492,
+    "observacao_status": "id_situacao=2 confirmado como ATIVO/liberado: 4.457 dos 4.725 veiculos usados em CT-es dos ultimos 90 dias estao nesse status (idem motoristas). Cadastro inclui veiculos e motoristas de terceiros/agregados."
+  },
+  "rotas_top": [
+    {
+      "origem": "RIO VERDE/GO",
+      "destino": "RIO VERDE/GO",
+      "ctes_12m": 1402,
+      "receita_12m": 3075668.81,
+      "resultado_12m": 875545.51,
+      "peso_kg": 49391485.57,
+      "ticket_medio": 2193.77
+    },
+    {
+      "origem": "BOCAINA/SP",
+      "destino": "ITIRAPINA/SP",
+      "ctes_12m": 1116,
+      "receita_12m": 2847007.93,
+      "resultado_12m": 443261.08,
+      "peso_kg": 44983860.0,
+      "ticket_medio": 2551.08
+    },
+    {
+      "origem": "JAU/SP",
+      "destino": "SANTOS/SP",
+      "ctes_12m": 689,
+      "receita_12m": 4367942.87,
+      "resultado_12m": 686740.4,
+      "peso_kg": 27879100.0,
+      "ticket_medio": 6339.54
+    },
+    {
+      "origem": "JATAI/GO",
+      "destino": "SANTOS/SP",
+      "ctes_12m": 644,
+      "receita_12m": 7791355.54,
+      "resultado_12m": 779609.84,
+      "peso_kg": 26393340.0,
+      "ticket_medio": 12098.38
+    },
+    {
+      "origem": "BOCAINA/SP",
+      "destino": "SANTOS/SP",
+      "ctes_12m": 638,
+      "receita_12m": 4540838.4,
+      "resultado_12m": 722528.15,
+      "peso_kg": 28380240.0,
+      "ticket_medio": 7117.3
+    },
+    {
+      "origem": "MONTIVIDIU/GO",
+      "destino": "RIO VERDE/GO",
+      "ctes_12m": 573,
+      "receita_12m": 1208808.28,
+      "resultado_12m": 143718.15,
+      "peso_kg": 22834258.0,
+      "ticket_medio": 2109.61
+    },
+    {
+      "origem": "JAU/SP",
+      "destino": "ITIRAPINA/SP",
+      "ctes_12m": 558,
+      "receita_12m": 1284129.52,
+      "resultado_12m": 161619.4,
+      "peso_kg": 21695460.0,
+      "ticket_medio": 2301.31
+    },
+    {
+      "origem": "VILA PROPICIO/GO",
+      "destino": "GOIATUBA/GO",
+      "ctes_12m": 534,
+      "receita_12m": 3120271.61,
+      "resultado_12m": 88026.74,
+      "peso_kg": 24940410.0,
+      "ticket_medio": 5843.21
+    },
+    {
+      "origem": "CASTRO/PR",
+      "destino": "CHAPADAO DO CEU/GO",
+      "ctes_12m": 507,
+      "receita_12m": 4548602.53,
+      "resultado_12m": 520352.65,
+      "peso_kg": 20813300.0,
+      "ticket_medio": 8971.6
+    },
+    {
+      "origem": "ARACATUBA/SP",
+      "destino": "FERNANDOPOLIS/SP",
+      "ctes_12m": 492,
+      "receita_12m": 1037792.62,
+      "resultado_12m": 143910.7,
+      "peso_kg": 17551180.0,
+      "ticket_medio": 2109.33
+    },
+    {
+      "origem": "ARARAQUARA/SP",
+      "destino": "SANTOS/SP",
+      "ctes_12m": 458,
+      "receita_12m": 2860779.61,
+      "resultado_12m": 452195.12,
+      "peso_kg": 18552170.26,
+      "ticket_medio": 6246.24
+    },
+    {
+      "origem": "RIO VERDE/GO",
+      "destino": "SAO SIMAO/GO",
+      "ctes_12m": 444,
+      "receita_12m": 1308749.44,
+      "resultado_12m": 153961.85,
+      "peso_kg": 17498588.0,
+      "ticket_medio": 2947.63
+    }
+  ],
+  "concentracao_grupos": {
+    "maior_grupo_raiz_cnpj": "35825580",
+    "receita_12m": 84893025.26,
+    "ctes_12m": 13474,
+    "participacao_pct": 38.71
+  },
+  "alertas": [
+    {
+      "titulo": "CT-es com resultado negativo nos últimos 12 meses",
+      "severidade": "critica",
+      "valor": 2530423.78,
+      "quantidade": 3611,
+      "descricao": "3611 CT-es (9.67% do total de 37325) fecharam com prejuizo, somando R$ 2,530,423.78 de resultado negativo."
+    },
+    {
+      "titulo": "Títulos a receber vencidos há mais de 90 dias",
+      "severidade": "critica",
+      "valor": 1490533.43,
+      "quantidade": 866,
+      "descricao": "866 títulos a receber, R$ 1,490,533.43, com atraso superior a 90 dias - candidatos a provisão de perda."
+    },
+    {
+      "titulo": "Inadimplência total da carteira a receber",
+      "severidade": "critica",
+      "valor": 11408629.37,
+      "quantidade": 2962,
+      "descricao": "R$ 11,408,629.37 em 2962 títulos vencidos representam 58.49% da carteira a receber em aberto."
+    },
+    {
+      "titulo": "Contas GOFLUX/FitBank praticamente sem conciliação",
+      "severidade": "critica",
+      "valor": 12254395.56,
+      "quantidade": 486,
+      "descricao": "486 lancamentos em 3 contas GOFLUX/FitBank (banco 450) estao não conciliados, R$ 12,254,395.56 - as contas 8189 e 16061 tem menos de 10% de conciliação, concentrando quase todo o backlog de conciliação da empresa."
+    },
+    {
+      "titulo": "Dependência de um único grupo econômico pagador",
+      "severidade": "critica",
+      "valor": 84893025.26,
+      "quantidade": 13474,
+      "descricao": "Agrupando pagadores pela raiz de CNPJ, o grupo 35825580 (MOTZ TRANSPORTES) responde por R$ 84,893,025.26 em 13474 CT-es, ou 38.71% da receita de 12 meses - risco de dependência comercial."
+    },
+    {
+      "titulo": "Títulos a pagar vencidos há mais de 90 dias",
+      "severidade": "atencao",
+      "valor": 1036606.96,
+      "quantidade": 346,
+      "descricao": "346 obrigacoes em aberto, R$ 1,036,606.96, vencidas há mais de 90 dias."
+    },
+    {
+      "titulo": "Movimentos bancários não conciliados nos últimos 60 dias",
+      "severidade": "atencao",
+      "valor": 20118959.72,
+      "quantidade": 912,
+      "descricao": "912 de 6530 lancamentos OFX (13.97%) seguem com id_conciliacao=0 (não conciliados), movimentando R$ 20,118,959.72 em valor absoluto."
+    },
+    {
+      "titulo": "Concentração de receita nos 5 maiores clientes",
+      "severidade": "atencao",
+      "valor": 100054001.71,
+      "quantidade": 5,
+      "descricao": "Os 5 maiores pagadores respondem por 45.62% da receita de 12 meses (R$ 100,054,001.71) entre 675 clientes ativos."
+    },
+    {
+      "titulo": "CT-es sem custo lançado no campo vl_custo",
+      "severidade": "atencao",
+      "valor": 219209288.65,
+      "quantidade": 37320,
+      "descricao": "37320 CT-es (99.99%) dos últimos 12 meses estao com vl_custo zerado (R$ 219,209,288.65 de receita); o campo e inutilizado e o custo real precisa ser lido de carta_frete, o que quebra qualquer relatorio de margem baseado em vl_custo."
+    },
+    {
+      "titulo": "CT-es sem carta-frete vinculada (sem custo de tração rastreável)",
+      "severidade": "atencao",
+      "valor": 7281140.66,
+      "quantidade": 2607,
+      "descricao": "2607 CT-es dos últimos 12 meses (6.98%), R$ 7,281,140.66 de receita, não possuem carta-frete associada - custo do frete não rastreável."
+    },
+    {
+      "titulo": "Cartas-frete sem retorno de comprovante e com saldo em aberto",
+      "severidade": "atencao",
+      "valor": 21962893.65,
+      "quantidade": 5870,
+      "descricao": "5870 cartas-frete emitidas nos últimos 12 meses seguem sem comprovante de entrega e com R$ 21,962,893.65 de saldo a pagar retido."
+    },
+    {
+      "titulo": "CT-es cancelados nos últimos 12 meses",
+      "severidade": "informativa",
+      "valor": 9882748.15,
+      "quantidade": 1660,
+      "descricao": "1660 CT-es cancelados no período, equivalentes a R$ 9,882,748.15 em documentos emitidos e desfeitos."
+    },
+    {
+      "titulo": "CT-es sem motorista vinculado",
+      "severidade": "informativa",
+      "valor": 95776.88,
+      "quantidade": 19,
+      "descricao": "19 CT-es dos últimos 12 meses não possuem cd_pessoa_motorista preenchido, prejudicando rastreabilidade operacional."
+    }
+  ],
+  "nao_apurado": {
+    "documentos_pessoa": "Nao existem tabelas pessoa_juridica/pessoa_fisica neste banco; CNPJ/CPF foi lido diretamente de pessoa.nr_cnpj_cpf.",
+    "nm_fantasia_filiais": "Nenhuma filial possui nm_fantasia preenchido em pessoa; foi usada a razao social (nm_pessoa) como nome.",
+    "dt_lancamento_ofx": "caixa_financeiro_lancamento_ofx.dt_lancamento reflete o instante da importacao do arquivo, nao a data do movimento; todas as metricas de periodo usam dt_documento, que e a data real do lancamento bancario.",
+    "serie_24_meses": "A janela de 24 meses vai de 2024-10 a 2026-09. O banco tem CT-es desde 2024-08-26, mas os meses 2024-08 e 2024-09 ficam fora da janela; 2026-09 e parcial (ate o dia 5).",
+    "conciliacao_ofx": "id_conciliacao e um flag 0/1 (nao nulo em 100% das linhas), nao uma FK. O percentual de conciliacao foi calculado como id_conciliacao = 1.",
+    "saldo_bancario": "Nao foi apurado saldo contabil das contas: o OFX importado nao traz campo de saldo e nao foi localizada tabela de saldo consolidado por conta confiavel."
+  }
+}
